@@ -51,3 +51,16 @@ docker compose logs -f surface-watch
 - nmap requires CAP_NET_RAW or root — handled by Docker cap_add
 - certstream WebSocket can disconnect — auto-reconnect built in
 - RDAP bootstrap servers have varying rate limits — use Semaphore
+- iptoasn.com public API discontinued 2020-12-31 — using ipinfo.io instead (local DB via pyasn is the long-term alternative)
+- vis.js CDN blocked by corporate TLS proxy — use `cdn_resources="in_line"` in pyvis
+- pyvis `write_html()` crashes on Windows (cp1252) — use `generate_html()` + `write_text(encoding="utf-8")`
+
+## AI assistant instructions
+- **Réponses brèves.** Privilégier les tableaux et listes. Éviter les conclusions redondantes.
+- **Faisabilité d'abord.** Avant toute implémentation non triviale, vérifier la compatibilité avec le stack existant (Python 3.11, SQLite, pyvis, Flask) et poser les questions nécessaires.
+- **Toujours mettre à jour la documentation** après chaque changement fonctionnel :
+  - `README.md` — usage visible par l'utilisateur final (sources, config, commandes)
+  - `PROJECT.md` — backlog, statut des features, bugs connus, métriques
+  - `COPILOT.md` (cette section "Known pitfalls") — tout nouveau piège ou décision technique
+- **Commiter** les fichiers de doc dans le même commit que le code (`git add -A`).
+- **Tester** après chaque modification : `pytest tests/ -q` doit rester à 22/22.
