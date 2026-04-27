@@ -37,7 +37,7 @@
 - Azure/Entra ID : public IPs, DNS zones, App Services, App Registrations
 - RDAP/WHOIS : domaines racines
 - Port scan léger : nmap top 100 TCP + TLS cert grab
-- IP enrichment : ASN + pays via iptoasn.com
+- IP enrichment : ASN + pays via ipinfo.io
 
 ---
 
@@ -56,7 +56,7 @@
 | Collecteur Azure/Entra ID | `collectors/azure.py` | ✅ Implémenté (non testé sans creds) |
 | Collecteur RDAP/WHOIS | `collectors/rdap.py` | ✅ Implémenté (0 enrichissements sur saur.fr) |
 | Collecteur port scanner (nmap) | `collectors/portscan.py` | ✅ Implémenté (nmap requis — prod Docker uniquement) |
-| IP enrichment (iptoasn.com) | `collectors/rdap.py::IPEnrichCollector` | ✅ Implémenté (IPs privées non enrichies) |
+| IP enrichment (ipinfo.io) | `collectors/rdap.py::IPEnrichCollector` | ✅ Implémenté (IPs privées non enrichies) |
 | Alerting CEF → Sekoia HTTP | `alerting/sekoia.py` | ✅ 6 tests — fallback fichier local OK |
 | Export HTML pyvis | `export/pyvis_map.py` | ✅ Testé live (~720 KB, vis.js embarqué, layout arborescent) |
 | Export JSON node-link | `export/formats.py` | ✅ Testé live |

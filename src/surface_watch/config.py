@@ -99,6 +99,11 @@ SEKOIA_INTAKE_URL: str = _optional(
 )
 
 # ---------------------------------------------------------------------------
+# IP enrichment — ipinfo.io (optional token, free up to 50k req/month)
+# ---------------------------------------------------------------------------
+IPINFO_TOKEN: str = _optional("IPINFO_TOKEN")
+
+# ---------------------------------------------------------------------------
 # Azure / Entra ID (optional)
 # ---------------------------------------------------------------------------
 AZURE_TENANT_ID: str = _optional("AZURE_TENANT_ID")

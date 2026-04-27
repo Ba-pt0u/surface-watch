@@ -183,17 +183,28 @@ class IPEnrichCollector(BaseCollector):
         self._ips = ips
 
     def _lookup_ip(self, ip_addr: str) -> dict[str, Any] | None:
-        """Query iptoasn.com API for ASN info."""
+        """Query ipinfo.io API for ASN / org / country info.
+
+        Free tier: 50 000 req/month without token.
+        Set IPINFO_TOKEN in .env for higher limits.
+        """
         try:
             import httpx
-            with httpx.Client(timeout=10) as client:
-                resp = client.get(f"https://api.iptoasn.com/v1/as/ip/{ip_addr}")
+            url = f"https://ipinfo.io/{ip_addr}/json"
+            headers = {}
+            if config.IPINFO_TOKEN:
+                headers["Authorization"] = f"Bearer {config.IPINFO_TOKEN}"
+            with httpx.Client(timeout=10, headers=headers) as client:
+                resp = client.get(url)
                 if resp.status_code == 200:
                     data = resp.json()
+                    # org field is "AS1234 Example Corp"
+                    org_raw = data.get("org", "")
+                    asn, _, asn_org = org_raw.partition(" ")
                     return {
-                        "asn": data.get("as_number"),
-                        "asn_org": data.get("as_description", ""),
-                        "country": data.get("as_country_code", ""),
+                        "asn": asn.lstrip("AS") or None,
+                        "asn_org": asn_org,
+                        "country": data.get("country", ""),
                     }
         except Exception as exc:
             log.debug("[ipinfo] Lookup failed for %s: %s", ip_addr, exc)

@@ -70,7 +70,7 @@ Scheduler (APScheduler)  +  Certstream listener  +  Flask dashboard
 | Azure / Entra ID | Public IPs, DNS zones, App Services, App Registrations, domaines verifies | Toutes les heures |
 | RDAP / WHOIS | Registrant, registrar, expiration, nameservers | Toutes les 24h |
 | Port scan | nmap top 100 TCP + TLS cert grab | Toutes les 12h |
-| IP enrichment | iptoasn.com API : ASN, organisation, pays | Toutes les 12h |
+| IP enrichment | ipinfo.io API : ASN, organisation, pays (token optionnel) | Toutes les 12h |
 
 ## Sorties
 
