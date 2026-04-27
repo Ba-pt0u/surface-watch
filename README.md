@@ -121,6 +121,85 @@ AZURE_CLIENT_SECRET=...
 DRY_RUN=false                    # true = pas d'alertes envoyees
 ```
 
+## Collecteur Azure / Entra ID
+
+Le collecteur Azure est **optionnel** et s'active automatiquement dès que les trois variables `AZURE_*` sont renseignées dans `.env`.
+
+### Ce qu'il collecte
+
+| Source Azure | Assets découverts |
+|---|---|
+| Public IP Addresses (toutes souscriptions) | `ip_address`, `cloud_resource` |
+| Azure DNS Zones + Record Sets | `domain`, `subdomain`, `ip_address` |
+| App Services | `subdomain` (hostnames custom + `*.azurewebsites.net`) |
+| Entra ID — App Registrations | `cloud_resource` + URLs des redirect URIs / identifier URIs |
+| Entra ID — Domaines vérifiés | `domain` |
+
+### Créer un Service Principal (App Registration)
+
+> Les commandes ci-dessous utilisent Azure CLI (`az`). Elles peuvent aussi être réalisées via le portail Azure.
+
+```bash
+# 1. Créer l'App Registration
+az ad app create --display-name "surface-watch"
+
+# 2. Créer le Service Principal associé
+az ad sp create --id <APP_ID>
+
+# 3. Créer un client secret (noter la valeur, elle ne s'affiche qu'une fois)
+az ad app credential reset --id <APP_ID> --years 1
+```
+
+### Permissions nécessaires
+
+**API Microsoft Graph** (pour Entra ID) — *Application permissions* :
+
+| Permission | Portée | Justification |
+|---|---|---|
+| `Domain.Read.All` | Tenant | Lister les domaines vérifiés |
+| `Application.Read.All` | Tenant | Lister les App Registrations |
+
+```bash
+# Ajouter les permissions Graph
+az ad app permission add --id <APP_ID> \
+  --api 00000003-0000-0000-c000-000000000000 \
+  --api-permissions \
+  dbb9058a-0e50-45d7-ae91-66909b5d4664=Role \
+  9a5d68dd-52b0-4cc2-bd40-abcf44ac3a30=Role
+
+# Accorder le consentement admin
+az ad app permission admin-consent --id <APP_ID>
+```
+
+**Rôles Azure RBAC** (pour les souscriptions) — rôle `Reader` suffisant :
+
+```bash
+# Assigner le rôle Reader sur chaque souscription à surveiller
+az role assignment create \
+  --assignee <APP_ID> \
+  --role "Reader" \
+  --scope "/subscriptions/<SUBSCRIPTION_ID>"
+```
+
+> Le rôle `Reader` est en lecture seule. Il donne accès aux Public IPs, DNS Zones et App Services.
+
+### Renseigner `.env`
+
+```bash
+# Valeurs disponibles dans le portail : Azure AD > App Registrations > surface-watch
+AZURE_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx   # "Directory (tenant) ID"
+AZURE_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx   # "Application (client) ID"
+AZURE_CLIENT_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+### Vérifier le collecteur
+
+```bash
+python -m surface_watch --collector azure --scan-now --no-web --no-certstream
+```
+
+Les assets découverts apparaissent dans le dashboard et dans `data/map.html` avec la couleur **verte** (cloud resources).
+
 ## CLI
 
 ```bash
