@@ -121,6 +121,56 @@ AZURE_CLIENT_SECRET=...
 DRY_RUN=false                    # true = pas d'alertes envoyees
 ```
 
+## Enrichissement IP (ASN / Organisation / Pays)
+
+Le collecteur `ipinfo` interroge [ipinfo.io](https://ipinfo.io/) pour enrichir chaque IP découverte avec son ASN, l'organisation propriétaire et le pays.
+
+### ipinfo.io (défaut)
+
+| Mode | Limite | Configuration |
+|---|---|---|
+| Sans token | 50 000 req/mois | Rien à faire |
+| Avec token (plan free) | 150 000 req/mois | `IPINFO_TOKEN=<token>` dans `.env` |
+
+Créer un token gratuit sur https://ipinfo.io/signup.
+
+### Alternative : base locale iptoasn.com (hors-ligne, sans limite)
+
+> L'API publique iptoasn.com a été arrêtée le 31 décembre 2020, mais les **dumps TSV quotidiens** restent disponibles en téléchargement libre sur https://iptoasn.com/.
+
+Pour basculer vers une résolution entièrement locale, sans dépendance réseau ni limite de débit :
+
+**1. Télécharger les dumps**
+
+```bash
+# IPv4
+curl -O https://iptoasn.com/data/ip2asn-v4.tsv.gz
+# IPv6
+curl -O https://iptoasn.com/data/ip2asn-v6.tsv.gz
+```
+
+Format du TSV : `range_start  range_end  AS_number  country_code  AS_description`
+
+**2. Option A — serveur API local (Go)**
+
+Le dépôt https://github.com/iptoasn/iptoasn-website contient le code source du serveur original. Une fois compilé, il expose `http://localhost:8080/v1/as/ip/{ip}` avec la même réponse JSON qu'avant. Il suffit alors de changer l'URL dans `_lookup_ip()`.
+
+**3. Option B — lookup direct Python avec `pyasn`**
+
+```bash
+pip install pyasn
+# Convertir le dump TSV en binaire MRT
+python -c "import pyasn; pyasn.mrtx.dump_prefixes_to_file('ip2asn-v4.tsv.gz', 'ipasn.dat', 'iptoasn')"
+```
+
+```python
+import pyasn
+asndb = pyasn.pyasn('ipasn.dat')
+asn, prefix = asndb.lookup('1.2.3.4')
+```
+
+Pour intégrer cette option dans Surface Watch : modifier `IPEnrichCollector._lookup_ip()` dans `collectors/rdap.py` pour utiliser `pyasn` au lieu de l'appel HTTP, et rafraîchir le fichier `.dat` quotidiennement (cron ou tâche Docker).
+
 ## Collecteur Azure / Entra ID
 
 Le collecteur Azure est **optionnel** et s'active automatiquement dès que les trois variables `AZURE_*` sont renseignées dans `.env`.

@@ -186,7 +186,16 @@ class IPEnrichCollector(BaseCollector):
         """Query ipinfo.io API for ASN / org / country info.
 
         Free tier: 50 000 req/month without token.
-        Set IPINFO_TOKEN in .env for higher limits.
+        Set IPINFO_TOKEN in .env for higher limits (plan free : 150k/month).
+
+        Alternative hors-ligne : iptoasn.com publie des dumps TSV quotidiens
+        (ip2asn-v4.tsv.gz, ip2asn-v6.tsv.gz) à https://iptoasn.com/ ainsi que
+        le code source d'un serveur API local. Pour basculer vers cette approche :
+          1. Télécharger le dump et le rafraîchir quotidiennement (cron/Docker).
+          2. Déployer le serveur local (Go) ou parser directement le TSV avec
+             le paquet PyPI ``pyasn`` (format MRT / binary).
+          3. Remplacer l'appel ci-dessous par un lookup local — aucune limite
+             de débit, données identiques, zéro dépendance réseau externe.
         """
         try:
             import httpx
