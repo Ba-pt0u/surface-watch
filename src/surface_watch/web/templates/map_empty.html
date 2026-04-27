@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Cartographie &mdash; Surface Watch{% endblock %}
+
+{% block content %}
+<div class="empty-state-full">
+    <div class="icon">&#x1F5FA;</div>
+    <h2>Cartographie non disponible</h2>
+    <p>
+        La carte interactive sera g&eacute;n&eacute;r&eacute;e automatiquement apr&egrave;s le
+        premier cycle de collecte. Lancez un scan pour commencer.
+    </p>
+    <div class="hint">python -m surface_watch --scan-now</div>
+    <a href="/" class="btn-primary" style="margin-top:12px">&#x2190; Retour au dashboard</a>
+</div>
+{% endblock %}

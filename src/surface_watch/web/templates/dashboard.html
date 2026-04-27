@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}Dashboard &mdash; Surface Watch{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <div class="page-title">Dashboard</div>
+        <div class="page-subtitle">Mise &agrave; jour : {{ now }}</div>
+    </div>
+    {% if organizations|length > 1 %}
+    <div class="org-tabs">
+        <a href="/" class="org-tab {% if not active_org %}org-tab-active{% endif %}">
+            Toutes
+        </a>
+        {% for org in organizations %}
+        <a href="/?org={{ org.id }}"
+           class="org-tab {% if active_org == org.id %}org-tab-active{% endif %}"
+           style="--org-color: {{ org.brand_color }};">
+            {{ org.name }}
+        </a>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<!-- Map shortcut banner -->
+{% if map_exists %}
+<div class="map-cta">
+    <div class="map-cta-text">
+        <h2>&#x1F5FA; Cartographie interactive</h2>
+        <p>
+            {{ stats.get('total_assets', 0) }} assets &middot;
+            {{ stats.get('edges', 0) }} relations &mdash;
+            cliquez pour explorer le graphe complet
+        </p>
+    </div>
+    <a href="/map" target="_blank" class="btn-primary">Ouvrir la carte &#x2197;</a>
+</div>
+{% endif %}
+
+<!-- Stats grid -->
+<section class="stats-grid">
+    <div class="stat-card" style="--accent:#003B5C">
+        <div class="stat-icon">&#x1F310;</div>
+        <div class="stat-value">{{ stats.get('total_assets', 0) }}</div>
+        <div class="stat-label">Total Assets</div>
+    </div>
+    <div class="stat-card" style="--accent:#003B5C">
+        <div class="stat-icon">&#x1F4C1;</div>
+        <div class="stat-value">{{ stats.get('domain', 0) }}</div>
+        <div class="stat-label">Domains</div>
+    </div>
+    <div class="stat-card" style="--accent:#00B2A9">
+        <div class="stat-icon">&#x1F517;</div>
+        <div class="stat-value">{{ stats.get('subdomain', 0) }}</div>
+        <div class="stat-label">Subdomains</div>
+    </div>
+    <div class="stat-card" style="--accent:#FFCD00">
+        <div class="stat-icon">&#x1F4BB;</div>
+        <div class="stat-value">{{ stats.get('ip_address', 0) }}</div>
+        <div class="stat-label">IP Addresses</div>
+    </div>
+    <div class="stat-card" style="--accent:#9595D2">
+        <div class="stat-icon">&#x1F512;</div>
+        <div class="stat-value">{{ stats.get('certificate', 0) }}</div>
+        <div class="stat-label">Certificates</div>
+    </div>
+    <div class="stat-card" style="--accent:#E87722">
+        <div class="stat-icon">&#x26A1;</div>
+        <div class="stat-value">{{ stats.get('port_service', 0) }}</div>
+        <div class="stat-label">Open Ports</div>
+    </div>
+    <div class="stat-card" style="--accent:#4CAF50">
+        <div class="stat-icon">&#x2601;&#xFE0F;</div>
+        <div class="stat-value">{{ stats.get('cloud_resource', 0) }}</div>
+        <div class="stat-label">Cloud Resources</div>
+    </div>
+    <div class="stat-card" style="--accent:#003B5C">
+        <div class="stat-icon">&#x1F578;</div>
+        <div class="stat-value">{{ stats.get('edges', 0) }}</div>
+        <div class="stat-label">Relations</div>
+    </div>
+</section>
+
+<!-- Panels row -->
+<div class="panels">
+
+    <!-- Scan runs -->
+    <div class="panel">
+        <div class="panel-header">
+            <span class="panel-title">&#x1F501; Derniers scans</span>
+            <span class="panel-badge">{{ runs|length }}</span>
+        </div>
+        <div class="panel-body">
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Collecteur</th>
+                        <th>D&eacute;but</th>
+                        <th>Statut</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for run in runs %}
+                    <tr>
+                        <td class="ts">#{{ run.run_id }}</td>
+                        <td><span class="event-chip">{{ run.collector or 'all' }}</span></td>
+                        <td class="ts">{{ run.started_at[:19].replace('T', ' ') }}</td>
+                        <td><span class="badge badge-{{ run.status }}">{{ run.status }}</span></td>
+                    </tr>
+                    {% endfor %}
+                    {% if not runs %}
+                    <tr class="empty-row">
+                        <td colspan="4">Aucun scan effectu&eacute; &mdash; lancez un cycle de collecte</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Alerts -->
+    <div class="panel">
+        <div class="panel-header">
+            <span class="panel-title">&#x26A0; Alertes r&eacute;centes</span>
+            <span class="panel-badge">{{ alerts|length }}</span>
+        </div>
+        <div class="panel-body">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Sev.</th>
+                        <th>&Eacute;v&eacute;nement</th>
+                        <th>Asset</th>
+                        <th>Horodatage</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in alerts[:25] %}
+                    <tr>
+                        <td>
+                            <span class="sev-badge {{ a.sev_class }}">
+                                {{ a.severity }}
+                            </span>
+                        </td>
+                        <td><span class="event-chip">{{ a.event_id or '—' }}</span></td>
+                        <td class="asset-uid" title="{{ a.asset }}">{{ a.asset or '—' }}</td>
+                        <td class="ts">{{ a.timestamp[:19].replace('T', ' ') if a.timestamp else '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                    {% if not alerts %}
+                    <tr class="empty-row">
+                        <td colspan="4">Aucune alerte &mdash; les &eacute;v&eacute;nements appara&icirc;tront apr&egrave;s un scan</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

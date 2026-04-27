@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "surface-watch"
+version = "1.0.0"
+description = "Continuous attack surface monitoring tool"
+requires-python = ">=3.11"
+dependencies = [
+    # DNS
+    "dnspython>=2.6",
+    "tldextract>=5.1",
+    # Certificate Transparency
+    "certstream>=1.12",
+    "cryptography>=42.0",
+    # Azure / Entra ID
+    "azure-identity>=1.16",
+    "azure-mgmt-resource>=23.1",
+    "azure-mgmt-network>=25.4",
+    "azure-mgmt-dns>=8.1",
+    "azure-mgmt-web>=7.2",
+    "msal>=1.28",
+    # RDAP / WHOIS
+    "ipwhois>=1.2",
+    # Network
+    "python-nmap>=0.7",
+    "httpx>=0.27",
+    # Graph / Cartography
+    "networkx>=3.3",
+    "pyvis>=0.3",
+    # Web
+    "flask>=3.0",
+    # Scheduling
+    "apscheduler>=3.10",
+    # Data / Config
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+    # Alerting
+    "requests>=2.32",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov",
+    "ruff",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Surface Watch{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <nav class="topbar">
+        <a class="topbar-brand" href="/">
+            <div class="brand-icon">&#x1F6F0;</div>
+            <div>
+                <span class="brand-name">Surface Watch</span>
+                <span class="brand-sub">Attack Surface Monitor</span>
+            </div>
+        </a>
+        <div class="topbar-nav">
+            <a href="/" class="{% if request.path == '/' %}active{% endif %}">Dashboard</a>
+            <a href="/map" class="{% if request.path == '/map' %}active{% endif %}">Cartographie</a>
+        </div>
+        <div class="topbar-actions">
+            <a class="btn-outline" href="/api/graph.json" download title="Export JSON">&#x2B07; JSON</a>
+            <a class="btn-outline" href="/api/graph.graphml" download title="Export GraphML">&#x2B07; GraphML</a>
+        </div>
+    </nav>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    <footer>
+        Surface Watch v1.0 &mdash; Usage interne uniquement
+    </footer>
+</body>
+</html>

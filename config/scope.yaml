@@ -1,0 +1,88 @@
+# surface-watch — Scope definition
+# Defines the perimeter to monitor.
+#
+# Multi-organisation : chaque organisation correspond à une entité Saur Group.
+# Les identifiants (id) proviennent de UI-SAUR/organisation.yaml.
+# La couleur de marque est utilisée dans la cartographie (bordure des nœuds).
+#
+# Formats supportés :
+#   Forme courte (rétrocompatible) :
+#     domains:
+#       - example.com
+#
+#   Forme longue (multi-org) :
+#     organizations:
+#       - id: saur_france
+#         name: Saur France
+#         brand_color: "#00B2A9"
+#         domains:
+#           - saur.fr
+#         ip_ranges:
+#           - 198.51.100.0/24
+
+# ── Organisations surveillées ──────────────────────────────────────────────
+organizations:
+
+  - id: saur_france
+    name: "Saur France"
+    brand_color: "#00B2A9"          # Saur Glacier Turquoise
+    domains:
+      - saur.fr
+      # - saur.com
+    ip_ranges: []
+
+  # - id: saur_group
+  #   name: "Saur Group"
+  #   brand_color: "#003B5C"        # Saur Corporate Blue
+  #   domains:
+  #     - saur.com
+  #   ip_ranges: []
+
+  # - id: cise_tp
+  #   name: "Cise TP"
+  #   brand_color: "#003B5C"        # Saur Corporate Blue (entité)
+  #   domains:
+  #     - cise-tp.com
+  #   ip_ranges: []
+
+  # - id: stereau
+  #   name: "Stereau"
+  #   brand_color: "#003B5C"
+  #   domains:
+  #     - stereau.fr
+  #   ip_ranges: []
+
+  # - id: industrial_water_solutions
+  #   name: "Nijhuis Saur Industries"
+  #   brand_color: "#FFCD00"        # Saur Horizon Yellow
+  #   domains:
+  #     - nijhuissaurindustries.com
+  #   ip_ranges: []
+
+  # - id: gestagua
+  #   name: "Gestagua"
+  #   brand_color: "#00B2A9"
+  #   domains:
+  #     - gestagua.com
+  #   ip_ranges: []
+
+  # - id: aquapor
+  #   name: "Aquapor"
+  #   brand_color: "#00B2A9"
+  #   domains:
+  #     - aquapor.pt
+  #   ip_ranges: []
+
+# ── Exclusions globales (toutes organisations) ────────────────────────────
+exclusions:
+  domains: []
+  ip_ranges:
+    # Les IPs RFC1918 n'ont pas de valeur pour l'enrichissement externe
+    # - 10.0.0.0/8
+    # - 172.16.0.0/12
+    # - 192.168.0.0/16
+    []
+
+# ── Forme courte rétrocompatible (ignorée si organizations: est présent) ──
+# domains: []
+# ip_ranges: []

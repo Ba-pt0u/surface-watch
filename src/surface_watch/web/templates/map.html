@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Cartographie &mdash; Surface Watch{% endblock %}
+
+{% block content %}
+<div class="map-page">
+    {% if map_exists %}
+        <iframe src="/map/raw" class="map-frame"></iframe>
+    {% else %}
+        <div class="empty-state">
+            <h2>Aucune cartographie disponible</h2>
+            <p>La carte sera g&eacute;n&eacute;r&eacute;e automatiquement apr&egrave;s le premier cycle de collecte.</p>
+            <p>Lancez un scan ou attendez le prochain cycle planifi&eacute;.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

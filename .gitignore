@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Environment
+.env
+
+# Data (persisted via Docker volume)
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/*.html
+data/*.json
+data/*.graphml
+data/snapshots/
+data/alerts.log
+
+# IDE
+.vscode/
+.idea/
+*.swp

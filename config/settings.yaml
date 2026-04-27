@@ -1,0 +1,74 @@
+# surface-watch — Runtime settings
+
+# Collector schedule (ISO 8601 duration or "realtime")
+schedule:
+  dns: PT6H          # every 6 hours
+  ct_batch: PT6H     # crt.sh batch query every 6 hours
+  ct_stream: realtime # certstream WebSocket — always on
+  azure: PT1H        # every hour
+  rdap: P1D          # every 24 hours
+  portscan: PT12H    # every 12 hours
+  ipinfo: PT12H      # every 12 hours
+
+# Port scanner settings
+portscan:
+  top_ports: 100       # nmap --top-ports N
+  arguments: "-sV -Pn --open"  # service detection, no ping, open ports only
+  timeout: 300         # seconds per host
+  tls_grab_ports:      # ports to attempt TLS certificate grab
+    - 443
+    - 8443
+
+# Certificate Transparency settings
+ct:
+  # Max Levenshtein distance for typosquatting detection
+  typosquat_max_distance: 2
+  # crt.sh rate limit (requests per second)
+  crtsh_rate_limit: 1.0
+
+# DNS brute-force settings
+dns:
+  # Enable subdomain brute-force (in addition to passive CT discovery)
+  bruteforce_enabled: true
+  # Path to wordlist file (relative to config/ or absolute)
+  wordlist: wordlist.txt
+  # Max concurrent DNS queries
+  concurrency: 50
+  # Timeout per query (seconds)
+  timeout: 5
+
+# Alert severity thresholds
+alerting:
+  # CEF severity mapping
+  severity:
+    new_subdomain: 5
+    new_ip: 5
+    new_certificate: 4
+    new_port: 6
+    critical_port_exposed: 8  # ports in critical_ports list
+    typosquat_cert: 9
+    asset_changed: 3
+    asset_removed: 2
+  # Ports that trigger critical alerts when discovered open
+  critical_ports:
+    - 22    # SSH
+    - 23    # Telnet
+    - 3389  # RDP
+    - 1433  # MSSQL
+    - 3306  # MySQL
+    - 5432  # PostgreSQL
+    - 27017 # MongoDB
+    - 6379  # Redis
+    - 9200  # Elasticsearch
+
+# Web dashboard
+web:
+  host: "0.0.0.0"
+  port: 8080
+
+# Sekoia intake
+sekoia:
+  batch_size: 50       # max events per POST
+  timeout: 15          # HTTP timeout seconds
+  max_retries: 5
+  backoff_base: 2      # seconds (doubled each retry)
