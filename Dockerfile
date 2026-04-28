@@ -9,7 +9,11 @@ WORKDIR /app
 
 # Install Python dependencies
 COPY pyproject.toml .
-RUN pip install --no-cache-dir .
+# Stub minimal du package pour que setuptools puisse résoudre les dépendances
+# sans avoir besoin du code source (couche cache stable)
+RUN mkdir -p src/surface_watch && touch src/surface_watch/__init__.py && \
+    pip install --no-cache-dir . && \
+    rm -rf src/
 
 # Copy source code and config
 COPY src/ src/
