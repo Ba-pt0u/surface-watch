@@ -6,6 +6,7 @@ Routes:
   GET /assets        — Asset browser (filterable by type)
   GET /scans         — Scan history with discovery counts
   GET /scans/<id>    — Scan detail
+  GET /config          — Configuration page (scope, settings, collector status)
   GET /map           — Full-page Cytoscape.js cartography (3 layouts, live data)
   GET /api/stats     — JSON stats
   GET /api/alerts    — JSON recent alerts (structured, parsed from CEF)
@@ -35,11 +36,31 @@ _app = Flask(
 
 # Set by __main__.py after graph is initialized
 _graph = None
+_scheduler = None
+_trigger_callback = None
 
 
 def set_graph(graph: "AssetGraph") -> None:
     global _graph
     _graph = graph
+
+
+def set_scheduler(scheduler) -> None:
+    global _scheduler
+    _scheduler = scheduler
+
+
+def set_trigger_callback(fn) -> None:
+    """Register the run_scan_cycle function to avoid circular import."""
+    global _trigger_callback
+    _trigger_callback = fn
+
+
+# Basic input validators for config endpoints
+_DOMAIN_RE = re.compile(r'^[a-zA-Z0-9*._-]+$')
+_CIDR_RE   = re.compile(r'^[0-9a-fA-F:.]+(/\d+)?$')
+_HEX_RE    = re.compile(r'^#[0-9a-fA-F]{3,6}$')
+_ISO_DUR_RE = re.compile(r'^P(\d+D)?(T(\d+H)?(\d+M)?(\d+S)?)?$|^realtime$', re.IGNORECASE)
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +166,21 @@ def map_view():
     )
 
 
+@_app.route("/config")
+def config_view():
+    """Configuration page: collector status, scope editor, settings editor."""
+    excl = config.SCOPE.get("exclusions") or {}
+    return render_template(
+        "config.html",
+        organizations=config.ORGANIZATIONS,
+        settings=config.SETTINGS,
+        exc_domains=(excl.get("domains") or []),
+        exc_ip_ranges=(excl.get("ip_ranges") or []),
+        azure_enabled=config.AZURE_ENABLED,
+        dry_run=config.DRY_RUN,
+    )
+
+
 # ---------------------------------------------------------------------------
 # API
 # ---------------------------------------------------------------------------
@@ -247,6 +283,164 @@ def api_graph_graphml():
     if not path.exists():
         return jsonify({"error": "No export yet"}), 404
     return send_file(str(path), mimetype="application/xml", as_attachment=True)
+
+
+# ---------------------------------------------------------------------------
+# Config API
+# ---------------------------------------------------------------------------
+
+@_app.route("/api/collector/status")
+def api_collector_status():
+    """Return status of each collector: running / standby / realtime / disabled."""
+    # Collect running collectors from DB
+    running: set[str] = set()
+    if _graph:
+        cur = _graph._db.execute(
+            "SELECT collector FROM scan_runs WHERE finished_at IS NULL"
+        )
+        for row in cur:
+            for c in (row[0] or "").split(","):
+                running.add(c.strip())
+
+    # Collect scheduler next-run times
+    job_next: dict[str, str | None] = {}
+    if _scheduler:
+        for job in _scheduler.get_jobs():
+            nrt = job.next_run_time
+            job_next[job.id] = nrt.isoformat() if nrt else None
+
+    schedule_cfg = config.SETTINGS.get("schedule", {})
+    all_names = ["dns", "ct_batch", "ct_stream", "azure", "rdap", "portscan", "ipinfo"]
+    collectors = []
+    for name in all_names:
+        interval = schedule_cfg.get(name, "")
+        if interval == "realtime":
+            status = "realtime"
+        elif name == "azure" and not config.AZURE_ENABLED:
+            status = "disabled"
+        elif name in running:
+            status = "running"
+        elif f"scan_{name}" in job_next:
+            status = "standby"
+        else:
+            status = "not_scheduled"
+        collectors.append({
+            "name":     name,
+            "status":   status,
+            "schedule": interval,
+            "next_run": job_next.get(f"scan_{name}"),
+        })
+    return jsonify(collectors)
+
+
+@_app.route("/api/config/scope", methods=["POST"])
+def api_config_scope():
+    """Validate and save scope.yaml."""
+    import copy as _copy
+    import yaml as _yaml
+
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "Corps JSON manquant"}), 400
+
+    organizations = []
+    for org in data.get("organizations", []):
+        oid   = str(org.get("id", "")).strip()[:64]
+        name  = str(org.get("name", oid)).strip()[:128]
+        color = str(org.get("brand_color", "#003B5C")).strip()
+        if not oid:
+            continue
+        if not _HEX_RE.match(color):
+            color = "#003B5C"
+        domains   = [d.strip() for d in org.get("domains",   []) if _DOMAIN_RE.match(d.strip())]
+        ip_ranges = [r.strip() for r in org.get("ip_ranges", []) if _CIDR_RE.match(r.strip())]
+        organizations.append({"id": oid, "name": name, "brand_color": color,
+                               "domains": domains, "ip_ranges": ip_ranges})
+
+    excl = data.get("exclusions", {})
+    exc_domains   = [d.strip() for d in excl.get("domains",   []) if _DOMAIN_RE.match(d.strip())]
+    exc_ip_ranges = [r.strip() for r in excl.get("ip_ranges", []) if _CIDR_RE.match(r.strip())]
+
+    new_scope = {"organizations": organizations,
+                 "exclusions": {"domains": exc_domains, "ip_ranges": exc_ip_ranges}}
+    try:
+        (config.CONFIG_DIR / "scope.yaml").write_text(
+            _yaml.safe_dump(new_scope, allow_unicode=True, default_flow_style=False),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        log.error("scope.yaml write error: %s", exc)
+        return jsonify({"error": str(exc)}), 500
+    return jsonify({"ok": True, "msg": "scope.yaml sauvegardé — redémarrez pour appliquer."})
+
+
+@_app.route("/api/config/settings", methods=["POST"])
+def api_config_settings():
+    """Validate and save settings.yaml."""
+    import copy as _copy
+    import yaml as _yaml
+
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "Corps JSON manquant"}), 400
+
+    new = _copy.deepcopy(config.SETTINGS)
+
+    for name, val in data.get("schedule", {}).items():
+        val = str(val).strip()
+        if name in new.get("schedule", {}) and _ISO_DUR_RE.match(val):
+            new["schedule"][name] = val
+
+    ps = data.get("portscan", {})
+    if "top_ports" in ps:
+        new["portscan"]["top_ports"] = max(1, min(65535, int(ps["top_ports"])))
+    if "timeout" in ps:
+        new["portscan"]["timeout"] = max(10, min(3600, int(ps["timeout"])))
+
+    for k, v in data.get("alerting", {}).get("severity", {}).items():
+        if k in new.get("alerting", {}).get("severity", {}):
+            new["alerting"]["severity"][k] = max(0, min(10, int(v)))
+
+    if "critical_ports" in data:
+        new["alerting"]["critical_ports"] = [
+            int(p) for p in data["critical_ports"] if str(p).isdigit()
+        ]
+
+    try:
+        (config.CONFIG_DIR / "settings.yaml").write_text(
+            _yaml.safe_dump(new, allow_unicode=True, default_flow_style=False),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        log.error("settings.yaml write error: %s", exc)
+        return jsonify({"error": str(exc)}), 500
+    return jsonify({"ok": True, "msg": "settings.yaml sauvegardé — redémarrez pour appliquer les fréquences."})
+
+
+@_app.route("/api/collector/<name>/trigger", methods=["POST"])
+def api_collector_trigger(name: str):
+    """Trigger an immediate run of a single collector."""
+    import threading as _threading
+    allowed = {"dns", "ct_batch", "azure", "rdap", "portscan", "ipinfo"}
+    if name not in allowed:
+        return jsonify({"error": "Collecteur inconnu"}), 400
+    if not _graph:
+        return jsonify({"error": "Graph non initialisé"}), 503
+    if not _trigger_callback:
+        return jsonify({"error": "Service non prêt"}), 503
+    # Prevent concurrent scans
+    row = _graph._db.execute(
+        "SELECT 1 FROM scan_runs WHERE finished_at IS NULL LIMIT 1"
+    ).fetchone()
+    if row:
+        return jsonify({"error": "Un scan est déjà en cours"}), 409
+    _threading.Thread(
+        target=_trigger_callback,
+        args=[_graph, [name]],
+        daemon=True,
+        name=f"manual_{name}",
+    ).start()
+    return jsonify({"ok": True, "msg": f"Collecteur {name} déclenché."})
 
 
 # ---------------------------------------------------------------------------

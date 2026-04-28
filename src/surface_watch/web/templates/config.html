@@ -1,0 +1,379 @@
+{% extends "base.html" %}
+{% block title %}Configuration &mdash; Surface Watch{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">&#9881; Configuration</h1>
+    <span class="page-sub">Fr&eacute;quences &middot; P&eacute;rim&egrave;tre &middot; Collecteurs</span>
+  </div>
+  {% if dry_run %}
+  <span class="badge-warn">Mode DRY RUN actif</span>
+  {% endif %}
+</div>
+
+<!-- Toast -->
+<div id="cfg-toast" class="cfg-toast" role="alert" aria-live="polite"></div>
+
+<!-- Tabs -->
+<div class="cfg-tabs">
+  <button class="cfg-tab active" data-tab="collectors">Collecteurs</button>
+  <button class="cfg-tab" data-tab="scope">P&eacute;rim&egrave;tre</button>
+  <button class="cfg-tab" data-tab="settings">Param&egrave;tres</button>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     TAB 1 — Collecteurs
+════════════════════════════════════════════════════════════ -->
+<div class="cfg-pane active" id="tab-collectors">
+  <div class="cfg-pane-hdr">
+    <span>Statut en temps r&eacute;el des collecteurs</span>
+    <button class="btn-sm" id="btn-refresh">&#8635; Actualiser</button>
+  </div>
+  <div id="collector-grid" class="collector-grid">
+    <div class="cfg-loading">Chargement&hellip;</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     TAB 2 — Périmètre (scope.yaml)
+════════════════════════════════════════════════════════════ -->
+<div class="cfg-pane" id="tab-scope">
+  <form id="scope-form" novalidate>
+
+    <div class="cfg-card">
+      <div class="cfg-card-hdr">Organisations surveill&eacute;es</div>
+
+      <div id="orgs-container">
+        {% for org in organizations %}
+        <div class="org-block">
+          <div class="org-block-top">
+            <input type="color" class="org-color-pick" value="{{ org.brand_color }}" title="Couleur">
+            <input type="text" class="org-name-inp" value="{{ org.name }}" placeholder="Nom de l'organisation" required>
+            <input type="text" class="org-id-inp" value="{{ org.id }}" placeholder="id_unique" title="Identifiant technique (pas d'espaces)" pattern="[a-z0-9_-]+" required>
+            <button type="button" class="btn-icon-danger org-remove" title="Supprimer l'organisation">&#10005;</button>
+          </div>
+          <div class="org-block-fields">
+            <label class="cfg-label">
+              Domaines <small>(un par ligne)</small>
+              <textarea class="org-domains cfg-textarea" rows="3" placeholder="example.com">{{ org.domains | join('\n') }}</textarea>
+            </label>
+            <label class="cfg-label">
+              Ranges IP <small>(CIDR, un par ligne)</small>
+              <textarea class="org-ranges cfg-textarea" rows="2" placeholder="198.51.100.0/24">{{ org.ip_ranges | join('\n') }}</textarea>
+            </label>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <button type="button" class="btn-secondary" id="add-org">&#43; Ajouter une organisation</button>
+    </div>
+
+    <div class="cfg-card">
+      <div class="cfg-card-hdr">Exclusions globales</div>
+      <div class="org-block-fields">
+        <label class="cfg-label">
+          Domaines exclus <small>(un par ligne)</small>
+          <textarea id="exc-domains" class="cfg-textarea" rows="3" placeholder="internal.example.com">{{ exc_domains | join('\n') }}</textarea>
+        </label>
+        <label class="cfg-label">
+          Ranges IP exclus <small>(CIDR, un par ligne)</small>
+          <textarea id="exc-ranges" class="cfg-textarea" rows="2" placeholder="10.0.0.0/8">{{ exc_ip_ranges | join('\n') }}</textarea>
+        </label>
+      </div>
+    </div>
+
+    <div class="cfg-save-row">
+      <button type="submit" class="btn-primary">&#128190; Sauvegarder le p&eacute;rim&egrave;tre</button>
+      <span class="cfg-hint">&#9888; Red&eacute;marrage requis pour que les nouveaux domaines soient collect&eacute;s</span>
+    </div>
+  </form>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     TAB 3 — Paramètres (settings.yaml)
+════════════════════════════════════════════════════════════ -->
+<div class="cfg-pane" id="tab-settings">
+  <form id="settings-form" novalidate>
+
+    <!-- Fréquences -->
+    <div class="cfg-card">
+      <div class="cfg-card-hdr">Fr&eacute;quences des collecteurs</div>
+      <p class="cfg-hint" style="margin-bottom:12px">Format ISO&nbsp;8601&nbsp;: <code>PT6H</code> = 6&nbsp;h &middot; <code>PT30M</code> = 30&nbsp;min &middot; <code>P1D</code> = 1&nbsp;jour &middot; <code>realtime</code> = temps r&eacute;el</p>
+      <div class="cfg-sched-grid">
+        {% for name, interval in settings.get('schedule', {}).items() %}
+        <label class="cfg-sched-row">
+          <span class="cfg-sched-name"><code>{{ name }}</code></span>
+          {% if interval == 'realtime' %}
+          <span class="badge-realtime">temps r&eacute;el</span>
+          <input type="hidden" name="schedule_{{ name }}" value="realtime">
+          {% else %}
+          <input type="text" class="cfg-sched-inp" name="schedule_{{ name }}"
+                 value="{{ interval }}" placeholder="PT6H" pattern="^P(T(\d+H)?(\d+M)?(\d+S)?)?(\d+D)?$">
+          {% endif %}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Port scanner -->
+    <div class="cfg-card">
+      <div class="cfg-card-hdr">Scanner de ports</div>
+      {% set ps = settings.get('portscan', {}) %}
+      <div class="cfg-grid-2">
+        <label class="cfg-label">
+          Top ports <small>(1&ndash;65535)</small>
+          <input type="number" name="portscan_top_ports" value="{{ ps.get('top_ports', 100) }}" min="1" max="65535" class="cfg-input">
+        </label>
+        <label class="cfg-label">
+          Timeout par h&ocirc;te <small>(sec)</small>
+          <input type="number" name="portscan_timeout" value="{{ ps.get('timeout', 300) }}" min="10" max="3600" class="cfg-input">
+        </label>
+      </div>
+      <label class="cfg-label" style="margin-top:10px">
+        Ports critiques <small>(virgule ou nouvelle ligne)</small>
+        <textarea id="critical-ports" name="critical_ports" class="cfg-textarea" rows="2">{{ settings.get('alerting', {}).get('critical_ports', []) | join(', ') }}</textarea>
+      </label>
+    </div>
+
+    <!-- Sévérités -->
+    <div class="cfg-card">
+      <div class="cfg-card-hdr">S&eacute;v&eacute;rit&eacute;s des alertes <small>(0 = info &middot; 10 = critique)</small></div>
+      <div class="cfg-sev-grid">
+        {% for key, val in settings.get('alerting', {}).get('severity', {}).items() %}
+        <label class="cfg-sev-row">
+          <span class="cfg-sev-name">{{ key.replace('_', ' ') }}</span>
+          <input type="number" name="sev_{{ key }}" value="{{ val }}" min="0" max="10" class="cfg-input cfg-sev-inp">
+          <span class="sev-bar" data-val="{{ val }}"></span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="cfg-save-row">
+      <button type="submit" class="btn-primary">&#128190; Sauvegarder les param&egrave;tres</button>
+      <span class="cfg-hint">&#9888; Les nouvelles fr&eacute;quences s'appliquent uniquement apr&egrave;s red&eacute;marrage</span>
+    </div>
+  </form>
+</div>
+
+<!-- ─── Template for a new org block (cloned by JS) ─────────────────── -->
+<template id="org-template">
+  <div class="org-block">
+    <div class="org-block-top">
+      <input type="color" class="org-color-pick" value="#003B5C" title="Couleur">
+      <input type="text" class="org-name-inp" value="" placeholder="Nom de l'organisation" required>
+      <input type="text" class="org-id-inp" value="" placeholder="id_unique" title="Identifiant technique" required>
+      <button type="button" class="btn-icon-danger org-remove" title="Supprimer">&#10005;</button>
+    </div>
+    <div class="org-block-fields">
+      <label class="cfg-label">
+        Domaines <small>(un par ligne)</small>
+        <textarea class="org-domains cfg-textarea" rows="3" placeholder="example.com"></textarea>
+      </label>
+      <label class="cfg-label">
+        Ranges IP <small>(CIDR, un par ligne)</small>
+        <textarea class="org-ranges cfg-textarea" rows="2" placeholder="198.51.100.0/24"></textarea>
+      </label>
+    </div>
+  </div>
+</template>
+
+<script>
+'use strict';
+
+// ── Utilities ─────────────────────────────────────────────────────────────
+function showToast(msg, type = 'ok') {
+  const t = document.getElementById('cfg-toast');
+  t.textContent = msg;
+  t.className = 'cfg-toast cfg-toast-' + type;
+  clearTimeout(t._tid);
+  t._tid = setTimeout(() => { t.className = 'cfg-toast'; }, 4500);
+}
+
+async function postJSON(url, body) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  return r.json();
+}
+
+// ── Tab switching ──────────────────────────────────────────────────────────
+document.querySelectorAll('.cfg-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.cfg-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.cfg-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Tab 1: Collector status ───────────────────────────────────────────────
+const STATUS_LABEL = {
+  running:       { cls: 'cc-running',   txt: '&#9679; En cours' },
+  standby:       { cls: 'cc-standby',   txt: '&#9675; Planifi&eacute;' },
+  realtime:      { cls: 'cc-realtime',  txt: '&#9889; Temps r&eacute;el' },
+  disabled:      { cls: 'cc-disabled',  txt: '&#10005; D&eacute;sactiv&eacute;' },
+  not_scheduled: { cls: 'cc-disabled',  txt: '&mdash; Non planifi&eacute;' },
+};
+
+function durationHuman(iso) {
+  if (!iso || iso === 'realtime') return '';
+  const m = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/.exec(iso);
+  if (!m) return iso;
+  const parts = [];
+  if (m[1]) parts.push(m[1] + 'j');
+  if (m[2]) parts.push(m[2] + 'h');
+  if (m[3]) parts.push(m[3] + 'min');
+  return parts.join('\u00a0') || iso;
+}
+
+function renderCollectors(collectors) {
+  const grid = document.getElementById('collector-grid');
+  if (!collectors || !collectors.length) {
+    grid.innerHTML = '<div class="cfg-loading">Aucune donn&eacute;e.</div>';
+    return;
+  }
+  grid.innerHTML = collectors.map(c => {
+    const s = STATUS_LABEL[c.status] || STATUS_LABEL.not_scheduled;
+    const nextRun = c.next_run
+      ? new Date(c.next_run).toLocaleString('fr-FR', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'})
+      : '\u2014';
+    const canTrigger = !['realtime', 'disabled', 'running'].includes(c.status);
+    const human = durationHuman(c.schedule);
+    return `<div class="collector-card">
+      <div class="cc-top">
+        <span class="cc-name">${c.name}</span>
+        <span class="cc-badge ${s.cls}">${s.txt}</span>
+      </div>
+      <div class="cc-meta">
+        ${c.schedule && c.schedule !== 'realtime' ? `<span>Fr&eacute;q&nbsp;: <code>${c.schedule}</code>${human ? ' &mdash; ' + human : ''}</span>` : ''}
+        ${c.status === 'standby' ? `<span>Prochain&nbsp;: <b>${nextRun}</b></span>` : ''}
+      </div>
+      ${canTrigger ? `<button class="btn-trigger" data-name="${c.name}">&#9654; D&eacute;clencher maintenant</button>` : ''}
+    </div>`;
+  }).join('');
+
+  grid.querySelectorAll('.btn-trigger').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = 'D\u00e9marrage\u2026';
+      const res = await postJSON('/api/collector/' + btn.dataset.name + '/trigger', {});
+      if (res.ok) {
+        showToast(res.msg || 'Collecteur d\u00e9clench\u00e9.', 'ok');
+        setTimeout(loadCollectors, 1500);
+      } else {
+        showToast(res.error || 'Erreur', 'err');
+        btn.disabled = false;
+        btn.innerHTML = '&#9654; D\u00e9clencher maintenant';
+      }
+    });
+  });
+}
+
+async function loadCollectors() {
+  try {
+    const res = await fetch('/api/collector/status');
+    renderCollectors(await res.json());
+  } catch {
+    document.getElementById('collector-grid').innerHTML =
+      '<div class="cfg-loading">Impossible de charger les donn\u00e9es.</div>';
+  }
+}
+
+loadCollectors();
+setInterval(loadCollectors, 30000);
+document.getElementById('btn-refresh').addEventListener('click', loadCollectors);
+
+// ── Tab 2: Scope form ─────────────────────────────────────────────────────
+document.getElementById('add-org').addEventListener('click', () => {
+  const tpl = document.getElementById('org-template').content.cloneNode(true);
+  document.getElementById('orgs-container').appendChild(tpl);
+  bindRemoveOrg();
+});
+
+function bindRemoveOrg() {
+  document.querySelectorAll('.org-remove').forEach(btn => {
+    btn.onclick = () => {
+      const block = btn.closest('.org-block');
+      if (document.querySelectorAll('.org-block').length > 1) {
+        block.remove();
+      } else {
+        showToast('Au moins une organisation est requise.', 'err');
+      }
+    };
+  });
+}
+bindRemoveOrg();
+
+document.getElementById('scope-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const organizations = [...document.querySelectorAll('.org-block')].map(b => ({
+    id:          b.querySelector('.org-id-inp').value.trim(),
+    name:        b.querySelector('.org-name-inp').value.trim(),
+    brand_color: b.querySelector('.org-color-pick').value,
+    domains:     b.querySelector('.org-domains').value.split('\n').map(s => s.trim()).filter(Boolean),
+    ip_ranges:   b.querySelector('.org-ranges').value.split('\n').map(s => s.trim()).filter(Boolean),
+  }));
+  const exclusions = {
+    domains:   document.getElementById('exc-domains').value.split('\n').map(s => s.trim()).filter(Boolean),
+    ip_ranges: document.getElementById('exc-ranges').value.split('\n').map(s => s.trim()).filter(Boolean),
+  };
+  const res = await postJSON('/api/config/scope', {organizations, exclusions});
+  showToast(res.msg || res.error, res.ok ? 'ok' : 'err');
+});
+
+// ── Tab 3: Settings form ──────────────────────────────────────────────────
+// Severity bar visual feedback
+document.querySelectorAll('.sev-bar').forEach(bar => {
+  const val = parseInt(bar.dataset.val) || 0;
+  bar.style.background = `linear-gradient(90deg, ${sevColor(val)} ${val*10}%, rgba(255,255,255,.08) ${val*10}%)`;
+  bar.style.width = '80px';
+  bar.style.height = '6px';
+  bar.style.borderRadius = '3px';
+  bar.style.display = 'inline-block';
+  bar.style.marginLeft = '8px';
+  bar.style.verticalAlign = 'middle';
+});
+function sevColor(v) {
+  if (v >= 8) return '#d32f2f';
+  if (v >= 6) return '#e65100';
+  if (v >= 4) return '#f9a825';
+  return '#388e3c';
+}
+document.querySelectorAll('[name^="sev_"]').forEach(inp => {
+  inp.addEventListener('input', () => {
+    const bar = inp.nextElementSibling;
+    if (bar && bar.classList.contains('sev-bar')) {
+      const v = parseInt(inp.value) || 0;
+      bar.style.background = `linear-gradient(90deg, ${sevColor(v)} ${v*10}%, rgba(255,255,255,.08) ${v*10}%)`;
+      bar.dataset.val = v;
+    }
+  });
+});
+
+document.getElementById('settings-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const schedule = {};
+  document.querySelectorAll('[name^="schedule_"]').forEach(inp => {
+    schedule[inp.name.replace('schedule_', '')] = inp.value.trim();
+  });
+  const portscan = {
+    top_ports: parseInt(document.querySelector('[name="portscan_top_ports"]').value),
+    timeout:   parseInt(document.querySelector('[name="portscan_timeout"]').value),
+  };
+  const severity = {};
+  document.querySelectorAll('[name^="sev_"]').forEach(inp => {
+    severity[inp.name.replace('sev_', '')] = parseInt(inp.value);
+  });
+  const critical_ports = document.getElementById('critical-ports').value
+    .split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
+
+  const res = await postJSON('/api/config/settings', {schedule, portscan, alerting: {severity}, critical_ports});
+  showToast(res.msg || res.error, res.ok ? 'ok' : 'err');
+});
+</script>
+{% endblock %}

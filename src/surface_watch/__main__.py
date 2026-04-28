@@ -236,9 +236,11 @@ def main() -> None:
     # Start Flask web dashboard BEFORE the initial scan so the healthcheck
     # can succeed immediately (the dashboard serves empty data gracefully)
     if not args.no_web:
-        from surface_watch.web.app import create_app, set_graph
+        from surface_watch.web.app import create_app, set_graph, set_scheduler, set_trigger_callback
 
         set_graph(graph)
+        set_scheduler(scheduler)
+        set_trigger_callback(run_scan_cycle)
         web_settings = config.SETTINGS.get("web", {})
         host = web_settings.get("host", "0.0.0.0")
         port = web_settings.get("port", 8080)
