@@ -7,16 +7,12 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Install Python dependencies
+# Install Python dependencies and package
 COPY pyproject.toml .
-# Stub minimal du package pour que setuptools puisse résoudre les dépendances
-# sans avoir besoin du code source (couche cache stable)
-RUN mkdir -p src/surface_watch && touch src/surface_watch/__init__.py && \
-    pip install --no-cache-dir . && \
-    rm -rf src/
-
-# Copy source code and config
 COPY src/ src/
+RUN pip install --no-cache-dir .
+
+# Copy config
 COPY config/ config/
 
 # Create data directory
