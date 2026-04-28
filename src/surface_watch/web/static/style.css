@@ -897,6 +897,7 @@ a.stat-card:hover {
   flex: 1;
   overflow-y: auto;
   padding: 12px 14px;
+  color: rgba(255,255,255,0.85);
 }
 .map-info-pill {
   display: inline-block;
