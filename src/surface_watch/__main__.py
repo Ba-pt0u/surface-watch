@@ -56,10 +56,18 @@ def run_scan_cycle(graph: AssetGraph, collectors: list[str] | None = None) -> No
     from surface_watch.alerting.sekoia import process_diffs
     from surface_watch.export.formats import export_json, export_graphml
 
-    run_id = graph.start_run(collector=",".join(collectors or ["all"]))
-    log.info("=== Scan cycle #%d started ===", run_id)
+    # Build the effective active-collector list BEFORE start_run so the
+    # DB record shows real names instead of the placeholder "all".
+    # Azure is excluded automatically when credentials are not configured.
+    _defaults = [
+        n for n in ("dns", "ct_batch", "azure", "rdap")
+        if n != "azure" or config.AZURE_ENABLED
+    ]
+    active = list(collectors) if collectors else _defaults
 
-    active = collectors or ["dns", "ct_batch", "azure", "rdap"]
+    run_id = graph.start_run(collector=",".join(active))
+    log.info("=== Scan cycle #%d started: %s ===", run_id, ",".join(active))
+
     errors: list[str] = []
 
     # Phase 1: Discovery collectors (dns, ct_batch, azure, rdap)
@@ -174,6 +182,9 @@ def start_scheduler(graph: AssetGraph) -> None:
     for collector_name, interval_str in schedule_config.items():
         if interval_str == "realtime":
             continue  # handled by certstream listener
+        if collector_name == "azure" and not config.AZURE_ENABLED:
+            log.info("Skipping azure scheduler: credentials not configured")
+            continue
         try:
             interval_kwargs = _parse_duration(interval_str)
             scheduler.add_job(
@@ -226,8 +237,20 @@ def main() -> None:
     if not args.no_certstream:
         from surface_watch.collectors.ct import CTStreamListener
         from surface_watch.alerting.sekoia import send_realtime_alert
+        from surface_watch.web.app import push_ct_event
 
-        ct_listener = CTStreamListener(callback=send_realtime_alert)
+        def _ct_callback(alert_type, cert_domain, scope_domain, leaf):
+            """Send alert to Sekoia AND push event to the web live feed."""
+            send_realtime_alert(alert_type, cert_domain, scope_domain, leaf)
+            push_ct_event({
+                "ts":     datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "type":   alert_type,
+                "domain": cert_domain,
+                "scope":  scope_domain,
+                "issuer": (leaf.get("issuer") or {}).get("O", ""),
+            })
+
+        ct_listener = CTStreamListener(callback=_ct_callback)
         ct_listener.start()
 
     # Start scheduler

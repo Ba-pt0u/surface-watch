@@ -7,6 +7,7 @@ Routes:
   GET /scans         — Scan history with discovery counts
   GET /scans/<id>    — Scan detail
   GET /config          — Configuration page (scope, settings, collector status)
+  GET /ct-stream       — Real-time Certificate Transparency stream
   GET /map           — Full-page Cytoscape.js cartography (3 layouts, live data)
   GET /api/stats     — JSON stats
   GET /api/alerts    — JSON recent alerts (structured, parsed from CEF)
@@ -17,12 +18,16 @@ Routes:
 """
 from __future__ import annotations
 
+import collections
+import json
 import logging
+import queue
 import re
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, Response, jsonify, render_template, request, send_file, stream_with_context
 
 from surface_watch import config
 
@@ -38,6 +43,30 @@ _app = Flask(
 _graph = None
 _scheduler = None
 _trigger_callback = None
+
+# ---------------------------------------------------------------------------
+# CT Stream — in-memory ring buffer + SSE subscriber list
+# ---------------------------------------------------------------------------
+_ct_events: collections.deque = collections.deque(maxlen=500)
+_ct_subscribers: list[queue.Queue] = []
+_ct_lock = threading.Lock()
+
+
+def push_ct_event(event: dict) -> None:
+    """Push a CT stream event to the ring buffer and all live SSE subscribers."""
+    with _ct_lock:
+        _ct_events.append(event)
+        dead = []
+        for q in _ct_subscribers:
+            try:
+                q.put_nowait(event)
+            except queue.Full:
+                dead.append(q)
+        for q in dead:
+            try:
+                _ct_subscribers.remove(q)
+            except ValueError:
+                pass
 
 
 def set_graph(graph: "AssetGraph") -> None:
@@ -179,6 +208,56 @@ def config_view():
         azure_enabled=config.AZURE_ENABLED,
         dry_run=config.DRY_RUN,
     )
+
+
+@_app.route("/ct-stream")
+def ct_stream_view():
+    """Real-time Certificate Transparency stream page."""
+    with _ct_lock:
+        recent = list(_ct_events)[-50:]
+    return render_template("ct_stream.html", initial_events=list(reversed(recent)))
+
+
+@_app.route("/api/ct/stream")
+def api_ct_stream():
+    """Server-Sent Events endpoint — streams CT events to the browser live."""
+    def generate():
+        q: queue.Queue = queue.Queue(maxsize=200)
+        with _ct_lock:
+            history = list(_ct_events)
+            _ct_subscribers.append(q)
+        try:
+            for event in reversed(history):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+            while True:
+                try:
+                    event = q.get(timeout=25)
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                except queue.Empty:
+                    yield ": keepalive\n\n"
+        except GeneratorExit:
+            pass
+        finally:
+            with _ct_lock:
+                try:
+                    _ct_subscribers.remove(q)
+                except ValueError:
+                    pass
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@_app.route("/api/ct/events")
+def api_ct_events():
+    """JSON snapshot of recent CT stream events (polling fallback)."""
+    limit = request.args.get("limit", 100, type=int)
+    with _ct_lock:
+        events = list(_ct_events)[-limit:]
+    return jsonify(list(reversed(events)))
 
 
 # ---------------------------------------------------------------------------

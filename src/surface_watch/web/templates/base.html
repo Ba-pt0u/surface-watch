@@ -21,6 +21,7 @@
             <a href="/assets" class="{% if request.path.startswith('/assets') %}active{% endif %}">Assets</a>
             <a href="/scans" class="{% if request.path.startswith('/scans') %}active{% endif %}">Scans</a>
             <a href="/map" class="{% if request.path == '/map' %}active{% endif %}">Carte</a>
+            <a href="/ct-stream" class="{% if request.path == '/ct-stream' %}active{% endif %}">&#9632; CT Stream</a>
             <a href="/config" class="{% if request.path.startswith('/config') %}active{% endif %}">&#9881; Config</a>
         </div>
         <div class="topbar-actions">

@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block title %}CT Stream &mdash; Surface Watch{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">&#9632; Certificate Transparency — Flux temps r&eacute;el</h1>
+    <span class="page-sub">Certificats d&eacute;tect&eacute;s en direct via certstream &middot; Surveillance des typosquats</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <span id="sse-status" class="sse-badge sse-connecting">Connexion&hellip;</span>
+    <button class="btn-sm" id="btn-clear">&#10005; Effacer</button>
+    <label class="sse-pause-label">
+      <input type="checkbox" id="chk-pause"> Pause auto-scroll
+    </label>
+  </div>
+</div>
+
+<!-- Stats bar -->
+<div class="ct-stats-bar">
+  <div class="ct-stat">
+    <span class="ct-stat-val" id="cnt-total">{{ initial_events | length }}</span>
+    <span class="ct-stat-lbl">Événements (session)</span>
+  </div>
+  <div class="ct-stat">
+    <span class="ct-stat-val" id="cnt-typo">0</span>
+    <span class="ct-stat-lbl">Typosquats</span>
+  </div>
+  <div class="ct-stat">
+    <span class="ct-stat-val" id="cnt-new">0</span>
+    <span class="ct-stat-lbl">Nouveaux certificats</span>
+  </div>
+  <div class="ct-stat">
+    <span class="ct-stat-lbl" style="font-size:12px">Dernier&nbsp;:</span>
+    <span class="ct-stat-val ct-stat-time" id="last-ts">&mdash;</span>
+  </div>
+</div>
+
+<!-- Filter bar -->
+<div class="ct-filter-bar">
+  <select id="filter-type" class="ct-filter-select">
+    <option value="">Tous les types</option>
+    <option value="new_certificate">Nouveau certificat</option>
+    <option value="typosquat_cert">Typosquat</option>
+  </select>
+  <input type="search" id="filter-domain" class="ct-filter-input"
+         placeholder="&#x1F50D; Filtrer par domaine&hellip;">
+</div>
+
+<!-- Event feed -->
+<div class="ct-feed" id="ct-feed">
+  {% for ev in initial_events %}
+  <div class="ct-row ct-row-{{ 'typo' if ev.type == 'typosquat_cert' else 'new' }}"
+       data-type="{{ ev.type }}" data-domain="{{ ev.domain }}">
+    <span class="ct-ts">{{ ev.ts[:19] | replace('T', ' ') }}</span>
+    <span class="ct-pill ct-pill-{{ 'typo' if ev.type == 'typosquat_cert' else 'new' }}">
+      {{ 'Typosquat &#9888;' if ev.type == 'typosquat_cert' else 'Nouveau cert' }}
+    </span>
+    <span class="ct-domain">{{ ev.domain }}</span>
+    <span class="ct-arrow">&#8594;</span>
+    <span class="ct-scope">scope&nbsp;: <b>{{ ev.scope }}</b></span>
+    {% if ev.issuer %}
+    <span class="ct-issuer">{{ ev.issuer }}</span>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="ct-empty" id="ct-empty">
+    En attente d&rsquo;&eacute;v&eacute;nements&hellip; (certstream actif en arri&egrave;re-plan)
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+'use strict';
+
+let total   = {{ initial_events | length }};
+let typos   = {{ initial_events | selectattr('type','equalto','typosquat_cert') | list | length }};
+let newCert = {{ initial_events | selectattr('type','ne','typosquat_cert') | list | length }};
+
+const feed      = document.getElementById('ct-feed');
+const emptyEl   = document.getElementById('ct-empty');
+const cntTotal  = document.getElementById('cnt-total');
+const cntTypo   = document.getElementById('cnt-typo');
+const cntNew    = document.getElementById('cnt-new');
+const lastTs    = document.getElementById('last-ts');
+const sseBadge  = document.getElementById('sse-status');
+const chkPause  = document.getElementById('chk-pause');
+const selType   = document.getElementById('filter-type');
+const inpDomain = document.getElementById('filter-domain');
+
+// Init counters from initial_events
+cntTotal.textContent = total;
+cntTypo.textContent  = typos;
+cntNew.textContent   = newCert;
+
+function setStatus(s) {
+  sseBadge.className = 'sse-badge sse-' + s;
+  sseBadge.textContent = {
+    connected:    'Connecté ●',
+    connecting:   'Connexion…',
+    reconnecting: 'Reconnexion…',
+    error:        'Erreur ✕',
+  }[s] || s;
+}
+
+function makeRow(ev) {
+  const isTypo = ev.type === 'typosquat_cert';
+  const ts     = (ev.ts || '').slice(0,19).replace('T',' ');
+  const div    = document.createElement('div');
+  div.className = `ct-row ct-row-${isTypo ? 'typo' : 'new'}`;
+  div.dataset.type   = ev.type;
+  div.dataset.domain = ev.domain;
+  div.innerHTML = `
+    <span class="ct-ts">${ts}</span>
+    <span class="ct-pill ct-pill-${isTypo ? 'typo' : 'new'}">${isTypo ? 'Typosquat &#9888;' : 'Nouveau cert'}</span>
+    <span class="ct-domain">${ev.domain}</span>
+    <span class="ct-arrow">&#8594;</span>
+    <span class="ct-scope">scope&nbsp;: <b>${ev.scope}</b></span>
+    ${ev.issuer ? `<span class="ct-issuer">${ev.issuer}</span>` : ''}
+  `;
+  return div;
+}
+
+function applyFilters() {
+  const type   = selType.value;
+  const domain = inpDomain.value.toLowerCase().trim();
+  feed.querySelectorAll('.ct-row').forEach(row => {
+    const okType   = !type   || row.dataset.type   === type;
+    const okDomain = !domain || (row.dataset.domain || '').toLowerCase().includes(domain);
+    row.style.display = (okType && okDomain) ? '' : 'none';
+  });
+}
+
+selType.addEventListener('change', applyFilters);
+inpDomain.addEventListener('input', applyFilters);
+
+function addEvent(ev) {
+  if (emptyEl) emptyEl.remove();
+  const row = makeRow(ev);
+
+  // Apply current filter before inserting
+  const type   = selType.value;
+  const domain = inpDomain.value.toLowerCase().trim();
+  const okType   = !type   || ev.type   === type;
+  const okDomain = !domain || ev.domain.toLowerCase().includes(domain);
+  if (!okType || !okDomain) row.style.display = 'none';
+
+  feed.insertBefore(row, feed.firstChild);
+
+  // Keep feed from growing unboundedly in the DOM
+  const rows = feed.querySelectorAll('.ct-row');
+  if (rows.length > 500) rows[rows.length - 1].remove();
+
+  // Counters
+  total++;
+  if (ev.type === 'typosquat_cert') typos++; else newCert++;
+  cntTotal.textContent = total;
+  cntTypo.textContent  = typos;
+  cntNew.textContent   = newCert;
+  lastTs.textContent   = (ev.ts || '').slice(0,19).replace('T',' ') || '—';
+
+  if (!chkPause.checked) {
+    feed.scrollTop = 0;
+  }
+}
+
+// SSE connection with auto-reconnect
+let es = null;
+
+function connect() {
+  if (es) { es.close(); }
+  setStatus('connecting');
+  es = new EventSource('/api/ct/stream');
+
+  es.onopen = () => setStatus('connected');
+
+  es.onmessage = (e) => {
+    try {
+      const ev = JSON.parse(e.data);
+      addEvent(ev);
+    } catch { /* ignore parse errors */ }
+  };
+
+  es.onerror = () => {
+    setStatus('reconnecting');
+    es.close();
+    setTimeout(connect, 5000);
+  };
+}
+
+connect();
+
+document.getElementById('btn-clear').addEventListener('click', () => {
+  feed.querySelectorAll('.ct-row').forEach(r => r.remove());
+  total = typos = newCert = 0;
+  cntTotal.textContent = cntTypo.textContent = cntNew.textContent = '0';
+  lastTs.textContent = '—';
+  feed.insertAdjacentHTML('beforeend', '<div class="ct-empty" id="ct-empty">En attente d\'événements…</div>');
+});
+
+// Stop SSE on page unload to free server thread
+window.addEventListener('beforeunload', () => es && es.close());
+</script>
+{% endblock %}
