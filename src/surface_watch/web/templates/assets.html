@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Assets &mdash; Surface Watch{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <div class="page-title">Assets{% if asset_type %} &mdash; {{ asset_type }}{% endif %}</div>
+        <div class="page-subtitle">{{ assets|length }} r&eacute;sultat(s) &mdash; {{ now }}</div>
+    </div>
+</div>
+
+<div class="assets-layout">
+    <!-- Sidebar: type filter -->
+    <aside class="assets-sidebar">
+        <div class="sidebar-title">Type</div>
+        <nav class="sidebar-nav">
+            <a href="/assets" class="sbnav {% if not asset_type %}sbnav-active{% endif %}">
+                Tous
+                <span class="sbnav-count">{{ type_counts.values()|sum }}</span>
+            </a>
+            {% set type_info = [
+                ('domain',         '🌐', '#003B5C', 'Domains'),
+                ('subdomain',      '🔗', '#00B2A9', 'Subdomains'),
+                ('ip_address',     '💻', '#FFCD00', 'IPs'),
+                ('certificate',    '🔒', '#9595D2', 'Certificats'),
+                ('port_service',   '⚡', '#E87722', 'Ports'),
+                ('cloud_resource', '☁',  '#4CAF50', 'Cloud'),
+            ] %}
+            {% for t, icon, color, label in type_info %}
+            {% if type_counts.get(t, 0) > 0 %}
+            <a href="/assets?type={{ t }}{% if search %}&q={{ search }}{% endif %}"
+               class="sbnav {% if asset_type == t %}sbnav-active{% endif %}"
+               style="--sbnav-color: {{ color }}">
+                {{ icon }} {{ label }}
+                <span class="sbnav-count">{{ type_counts.get(t, 0) }}</span>
+            </a>
+            {% endif %}
+            {% endfor %}
+        </nav>
+    </aside>
+
+    <!-- Main: search + table -->
+    <div class="assets-main">
+        <form class="search-bar" method="get" action="/assets">
+            {% if asset_type %}<input type="hidden" name="type" value="{{ asset_type }}">{% endif %}
+            <input type="search" name="q" value="{{ search }}" placeholder="Rechercher un asset (FQDN, IP, UID…)" class="search-input" autofocus>
+            <button type="submit" class="btn-primary">Rechercher</button>
+            {% if search or asset_type %}<a href="/assets" class="btn-reset">&#x2715; R&eacute;initialiser</a>{% endif %}
+        </form>
+
+        {% if assets %}
+        <div class="panel">
+            <div class="panel-body">
+                <table class="assets-table">
+                    <thead><tr>
+                        <th>UID / FQDN</th>
+                        <th>Type</th>
+                        <th>Source</th>
+                        <th>Organisation</th>
+                        <th>D&eacute;tails</th>
+                        <th>Vu le</th>
+                    </tr></thead>
+                    <tbody>
+                    {% for a in assets %}
+                    <tr>
+                        <td class="asset-uid-main">
+                            <span title="{{ a.uid }}">{{ a.uid }}</span>
+                            <a class="asset-map-link" href="/map" title="Voir dans la carte" target="_blank">&#x1F5FA;</a>
+                        </td>
+                        <td>
+                            {% set tc = {'domain':'#003B5C','subdomain':'#00B2A9','ip_address':'#ccaa00','certificate':'#7070bb','port_service':'#E87722','cloud_resource':'#388e3c'} %}
+                            <span class="type-pill" style="background:{{ tc.get(a.asset_type, '#aaa') }}20; color:{{ tc.get(a.asset_type, '#555') }}; border-color:{{ tc.get(a.asset_type,'#aaa') }}40">
+                                {{ a.asset_type or '—' }}
+                            </span>
+                        </td>
+                        <td class="ts">{{ a.get('source', '—') }}</td>
+                        <td class="ts">{{ a.get('organization', '—') }}</td>
+                        <td class="ts detail-cell">
+                            {% if a.asset_type == 'ip_address' %}
+                                {{ a.get('asn_org', '') }}{% if a.get('country') %} ({{ a.country }}){% endif %}
+                            {% elif a.asset_type == 'port_service' %}
+                                port {{ a.get('port', '?') }}/{{ a.get('protocol', 'tcp') }}
+                                {% if a.get('service_name') %} — {{ a.service_name }}{% endif %}
+                            {% elif a.asset_type == 'certificate' %}
+                                {% if a.get('common_name') %}CN={{ a.common_name }}{% endif %}
+                            {% elif a.asset_type == 'cloud_resource' %}
+                                {{ a.get('provider', '') }} {{ a.get('resource_type', '') }}
+                            {% endif %}
+                        </td>
+                        <td class="ts">{{ (a.get('first_seen') or '')[:10] }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% else %}
+        <div class="empty-state-full">
+            <div class="icon">&#x1F50D;</div>
+            <h2>Aucun asset trouv&eacute;</h2>
+            <p>{% if search %}Aucun r&eacute;sultat pour &laquo;{{ search }}&raquo;.{% else %}Lancez un scan pour d&eacute;couvrir des assets.{% endif %}</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

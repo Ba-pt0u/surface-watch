@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Scan #{{ run.run_id }} &mdash; Surface Watch{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <div class="page-title">Scan #{{ run.run_id }}</div>
+        <div class="page-subtitle">{{ run.started_at[:19].replace('T', ' ') }} &mdash; <span class="event-chip">{{ run.collector or 'all' }}</span></div>
+    </div>
+    <a href="/scans" class="btn-outline" style="color:#fff">&#x2190; Retour</a>
+</div>
+
+{% set s = run.summary %}
+<section class="stats-grid" style="margin-bottom:24px">
+    <div class="stat-card" style="--accent:#003B5C">
+        <div class="stat-icon">&#x1F578;</div>
+        <div class="stat-value">{{ s.get('assets', '—') }}</div>
+        <div class="stat-label">Assets total</div>
+    </div>
+    <div class="stat-card" style="--accent:#00B2A9">
+        <div class="stat-icon">&#x2795;</div>
+        <div class="stat-value">{{ s.get('diffs', 0) }}</div>
+        <div class="stat-label">Changements</div>
+    </div>
+    <div class="stat-card" style="--accent:#E87722">
+        <div class="stat-icon">&#x26A0;</div>
+        <div class="stat-value">{{ s.get('alerts', 0) }}</div>
+        <div class="stat-label">Alertes g&eacute;n&eacute;r&eacute;es</div>
+    </div>
+    <div class="stat-card" style="--accent:#9595D2">
+        <div class="stat-icon">&#x1F517;</div>
+        <div class="stat-value">{{ s.get('edges', '—') }}</div>
+        <div class="stat-label">Relations</div>
+    </div>
+    <div class="stat-card" style="--accent:{% if s.get('errors') %}var(--danger){% else %}var(--ok){% endif %}">
+        <div class="stat-icon">{% if s.get('errors') %}&#x274C;{% else %}&#x2705;{% endif %}</div>
+        <div class="stat-value">{{ s.get('errors', 0) }}</div>
+        <div class="stat-label">Erreurs</div>
+    </div>
+    <div class="stat-card" style="--accent:#003B5C">
+        <div class="stat-icon">&#x23F1;</div>
+        <div class="stat-value">
+            {% if run.finished_at %}ok{% else %}<span style="color:var(--info)">…</span>{% endif %}
+        </div>
+        <div class="stat-label">Statut</div>
+    </div>
+</section>
+
+<div class="panel">
+    <div class="panel-header"><span class="panel-title">D&eacute;tail du r&eacute;sultat</span></div>
+    <div class="panel-body panel-body-pad">
+        <dl class="detail-list">
+            <dt>Run ID</dt><dd>#{{ run.run_id }}</dd>
+            <dt>Collecteur</dt><dd><span class="event-chip">{{ run.collector or 'all' }}</span></dd>
+            <dt>D&eacute;but</dt><dd>{{ run.started_at[:19].replace('T', ' ') }}</dd>
+            <dt>Fin</dt><dd>{{ run.finished_at[:19].replace('T', ' ') if run.finished_at else 'En cours' }}</dd>
+            <dt>Statut</dt><dd><span class="badge badge-{{ run.status }}">{{ run.status }}</span></dd>
+            {% for k, v in s.items() %}
+            <dt>{{ k }}</dt><dd>{{ v }}</dd>
+            {% endfor %}
+        </dl>
+        <div style="margin-top:16px">
+            <a href="/assets" class="btn-primary">Voir les assets &rarr;</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

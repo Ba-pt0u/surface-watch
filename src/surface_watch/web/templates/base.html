@@ -17,9 +17,12 @@
         </a>
         <div class="topbar-nav">
             <a href="/" class="{% if request.path == '/' %}active{% endif %}">Dashboard</a>
-            <a href="/map" class="{% if request.path == '/map' %}active{% endif %}">Cartographie</a>
+            <a href="/assets" class="{% if request.path.startswith('/assets') %}active{% endif %}">Assets</a>
+            <a href="/scans" class="{% if request.path.startswith('/scans') %}active{% endif %}">Scans</a>
+            <a href="/map" class="{% if request.path == '/map' %}active{% endif %}">Carte</a>
         </div>
         <div class="topbar-actions">
+            <span id="scan-status-dot" class="scan-dot scan-dot-idle" title="Aucun scan en cours"></span>
             <a class="btn-outline" href="/api/graph.json" download title="Export JSON">&#x2B07; JSON</a>
             <a class="btn-outline" href="/api/graph.graphml" download title="Export GraphML">&#x2B07; GraphML</a>
         </div>
@@ -28,7 +31,25 @@
         {% block content %}{% endblock %}
     </main>
     <footer>
-        Surface Watch v1.0 &mdash; Usage interne uniquement
+        Surface Watch v1.1 &mdash; Usage interne uniquement
     </footer>
+    <script>
+    // Poll scan status every 10s — update the indicator dot
+    function pollScanStatus() {
+        fetch('/api/scan/status').then(r => r.json()).then(data => {
+            var dot = document.getElementById('scan-status-dot');
+            if (!dot) return;
+            if (data.running) {
+                dot.className = 'scan-dot scan-dot-running';
+                dot.title = 'Scan en cours : ' + (data.collector || 'all') + ' depuis ' + (data.started_at || '').slice(0, 19).replace('T', ' ');
+            } else {
+                dot.className = 'scan-dot scan-dot-idle';
+                dot.title = 'Aucun scan en cours';
+            }
+        }).catch(() => {});
+    }
+    pollScanStatus();
+    setInterval(pollScanStatus, 10000);
+    </script>
 </body>
 </html>

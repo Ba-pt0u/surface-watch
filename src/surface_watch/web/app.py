@@ -3,9 +3,14 @@ app.py — Flask web dashboard.
 
 Routes:
   GET /              — Dashboard: stats, recent alerts, collector status
+  GET /assets        — Asset browser (filterable by type)
+  GET /scans         — Scan history with discovery counts
+  GET /scans/<id>    — Scan detail
   GET /map           — Full-page interactive cartography (pyvis HTML)
   GET /api/stats     — JSON stats
   GET /api/alerts    — JSON recent alerts (structured, parsed from CEF)
+  GET /api/assets    — JSON asset list (filterable)
+  GET /api/scan/status  — JSON current scan status (running/idle)
   GET /api/graph.json    — Download JSON export
   GET /api/graph.graphml — Download GraphML export
 """
@@ -63,8 +68,64 @@ def dashboard():
     )
 
 
-@_app.route("/map")
-def map_view():
+@_app.route("/assets")
+def assets_view():
+    asset_type = request.args.get("type", "")
+    search = request.args.get("q", "").strip().lower()
+    if not _graph:
+        assets = []
+    else:
+        assets = [
+            {"uid": uid, **attrs}
+            for uid, attrs in _graph.g.nodes(data=True)
+            if (not asset_type or attrs.get("asset_type") == asset_type)
+            and (not search or search in uid.lower())
+        ]
+        assets.sort(key=lambda a: (a.get("asset_type", ""), a.get("uid", "")))
+
+    # Count per type for sidebar
+    type_counts: dict = {}
+    if _graph:
+        for _, attrs in _graph.g.nodes(data=True):
+            t = attrs.get("asset_type", "")
+            type_counts[t] = type_counts.get(t, 0) + 1
+
+    return render_template(
+        "assets.html",
+        assets=assets,
+        asset_type=asset_type,
+        search=search,
+        type_counts=type_counts,
+        now=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+    )
+
+
+@_app.route("/scans")
+def scans_view():
+    runs = _graph.get_last_runs(50) if _graph else []
+    return render_template(
+        "scans.html",
+        runs=runs,
+        now=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+    )
+
+
+@_app.route("/scans/<int:run_id>")
+def scan_detail(run_id: int):
+    if not _graph:
+        return render_template("scans.html", runs=[], now=""), 404
+    runs = _graph.get_last_runs(200)
+    run = next((r for r in runs if r["run_id"] == run_id), None)
+    if not run:
+        return render_template("scans.html", runs=[], now=""), 404
+    return render_template(
+        "scan_detail.html",
+        run=run,
+        now=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+    )
+
+
+
     """Serve the pyvis HTML directly as a full-page experience."""
     map_path = config.DATA_DIR / "map.html"
     if not map_path.exists():
@@ -96,8 +157,37 @@ def api_alerts():
     return jsonify(alerts)
 
 
-@_app.route("/api/graph.json")
-def api_graph_json():
+@_app.route("/api/assets")
+def api_assets():
+    asset_type = request.args.get("type", "")
+    search = request.args.get("q", "").strip().lower()
+    if not _graph:
+        return jsonify([])
+    assets = [
+        {"uid": uid, **attrs}
+        for uid, attrs in _graph.g.nodes(data=True)
+        if (not asset_type or attrs.get("asset_type") == asset_type)
+        and (not search or search in uid.lower())
+    ]
+    assets.sort(key=lambda a: a.get("uid", ""))
+    return jsonify(assets)
+
+
+@_app.route("/api/scan/status")
+def api_scan_status():
+    """Return whether a scan is currently running (checks for runs with no finished_at)."""
+    if not _graph:
+        return jsonify({"running": False})
+    cur = _graph._db.execute(
+        "SELECT run_id, started_at, collector FROM scan_runs WHERE finished_at IS NULL ORDER BY run_id DESC LIMIT 1"
+    )
+    row = cur.fetchone()
+    if row:
+        return jsonify({"running": True, "run_id": row[0], "started_at": row[1], "collector": row[2]})
+    return jsonify({"running": False})
+
+
+
     path = config.DATA_DIR / "graph.json"
     if not path.exists():
         return jsonify({"error": "No export yet"}), 404

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Scans &mdash; Surface Watch{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <div class="page-title">Historique des scans</div>
+        <div class="page-subtitle">{{ runs|length }} scan(s) &mdash; {{ now }}</div>
+    </div>
+</div>
+
+<div class="panel">
+    <div class="panel-body">
+        <table>
+            <thead><tr>
+                <th>#</th>
+                <th>Collecteur</th>
+                <th>D&eacute;but</th>
+                <th>Dur&eacute;e</th>
+                <th>Assets</th>
+                <th>Changements</th>
+                <th>Alertes</th>
+                <th>Erreurs</th>
+                <th>Statut</th>
+            </tr></thead>
+            <tbody>
+            {% for run in runs %}
+            {% set s = run.summary %}
+            <tr>
+                <td class="ts"><a href="/scans/{{ run.run_id }}">#{{ run.run_id }}</a></td>
+                <td><span class="event-chip">{{ run.collector or 'all' }}</span></td>
+                <td class="ts">{{ run.started_at[:16].replace('T', ' ') }}</td>
+                <td class="ts">
+                    {% if run.finished_at %}
+                        {% set dur = ((run.finished_at[:19] | replace('T',' ')) ) %}
+                        {{ run.finished_at[:16].replace('T',' ') }}
+                    {% else %}
+                        <span style="color:var(--info)">en cours…</span>
+                    {% endif %}
+                </td>
+                <td class="ts">{{ s.get('assets', '—') }}</td>
+                <td class="ts">
+                    {% if s.get('diffs') %}
+                    <span style="color:var(--turquoise); font-weight:600">+{{ s.diffs }}</span>
+                    {% else %}—{% endif %}
+                </td>
+                <td class="ts">
+                    {% if s.get('alerts') %}
+                    <span style="color:var(--warn); font-weight:600">{{ s.alerts }}</span>
+                    {% else %}0{% endif %}
+                </td>
+                <td class="ts">
+                    {% if s.get('errors') %}
+                    <span style="color:var(--danger)">{{ s.errors }}</span>
+                    {% else %}0{% endif %}
+                </td>
+                <td><span class="badge badge-{{ run.status }}">{{ run.status }}</span></td>
+            </tr>
+            {% else %}
+            <tr class="empty-row"><td colspan="9">Aucun scan enregistr&eacute;</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
