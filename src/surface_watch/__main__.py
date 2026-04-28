@@ -224,10 +224,6 @@ def main() -> None:
         graph.close()
         return
 
-    # Immediate scan if requested
-    if args.scan_now:
-        run_scan_cycle(graph)
-
     # Start certstream listener
     if not args.no_certstream:
         from surface_watch.collectors.ct import CTStreamListener
@@ -239,7 +235,8 @@ def main() -> None:
     # Start scheduler
     scheduler = start_scheduler(graph)
 
-    # Start Flask web dashboard
+    # Start Flask web dashboard BEFORE the initial scan so the healthcheck
+    # can succeed immediately (the dashboard serves empty data gracefully)
     if not args.no_web:
         from surface_watch.web.app import create_app, set_graph
 
@@ -256,6 +253,10 @@ def main() -> None:
         )
         flask_thread.start()
         log.info("Web dashboard running on http://%s:%d", host, port)
+
+    # Immediate scan if requested (after Flask is up so healthcheck passes)
+    if args.scan_now:
+        run_scan_cycle(graph)
 
     # Handle graceful shutdown
     stop_event = threading.Event()
