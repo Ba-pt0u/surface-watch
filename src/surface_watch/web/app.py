@@ -6,12 +6,12 @@ Routes:
   GET /assets        — Asset browser (filterable by type)
   GET /scans         — Scan history with discovery counts
   GET /scans/<id>    — Scan detail
-  GET /map           — Full-page interactive cartography (pyvis HTML)
+  GET /map           — Full-page Cytoscape.js cartography (3 layouts, live data)
   GET /api/stats     — JSON stats
   GET /api/alerts    — JSON recent alerts (structured, parsed from CEF)
   GET /api/assets    — JSON asset list (filterable)
   GET /api/scan/status  — JSON current scan status (running/idle)
-  GET /api/graph.json    — Download JSON export
+  GET /api/graph.json    — Cytoscape.js-compatible live graph JSON
   GET /api/graph.graphml — Download GraphML export
 """
 from __future__ import annotations
@@ -21,7 +21,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, render_template, request, send_file
+from flask import Flask, jsonify, render_template, request, send_file
 
 from surface_watch import config
 
@@ -55,7 +55,7 @@ def dashboard():
     org_filter = request.args.get("org", "")
     alerts = _read_recent_alerts(50, org_filter=org_filter)
 
-    map_path = config.DATA_DIR / "map.html"
+    map_exists = bool(_graph and _graph.g.number_of_nodes() > 0)
     return render_template(
         "dashboard.html",
         stats=stats,
@@ -63,7 +63,7 @@ def dashboard():
         alerts=alerts,
         organizations=config.ORGANIZATIONS,
         active_org=org_filter,
-        map_exists=map_path.exists(),
+        map_exists=map_exists,
         now=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
     )
 
@@ -125,14 +125,24 @@ def scan_detail(run_id: int):
     )
 
 
-
-    """Serve the pyvis HTML directly as a full-page experience."""
-    map_path = config.DATA_DIR / "map.html"
-    if not map_path.exists():
+@_app.route("/map")
+def map_view():
+    """Interactive Cytoscape.js cartography (live from in-memory graph)."""
+    if not _graph or _graph.g.number_of_nodes() == 0:
         return render_template("map_empty.html")
-    # Serve the self-contained pyvis HTML directly (no iframe needed)
-    content = map_path.read_text(encoding="utf-8")
-    return Response(content, mimetype="text/html")
+    _HIDDEN = {"dns_record"}
+    node_count = sum(1 for _, a in _graph.g.nodes(data=True) if a.get("asset_type") not in _HIDDEN)
+    edge_count = sum(
+        1 for s, t, _ in _graph.g.edges(data=True)
+        if _graph.g.nodes.get(s, {}).get("asset_type") not in _HIDDEN
+        and _graph.g.nodes.get(t, {}).get("asset_type") not in _HIDDEN
+    )
+    return render_template(
+        "map.html",
+        node_count=node_count,
+        edge_count=edge_count,
+        organizations=config.ORGANIZATIONS,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -187,11 +197,48 @@ def api_scan_status():
     return jsonify({"running": False})
 
 
-
-    path = config.DATA_DIR / "graph.json"
-    if not path.exists():
-        return jsonify({"error": "No export yet"}), 404
-    return send_file(str(path), mimetype="application/json", as_attachment=True)
+@_app.route("/api/graph.json")
+def api_graph_json():
+    """Cytoscape.js-compatible graph JSON (live from in-memory graph)."""
+    if not _graph:
+        return jsonify({"elements": []})
+    _HIDDEN = {"dns_record"}
+    org_colors = {o["id"]: o["brand_color"] for o in config.ORGANIZATIONS}
+    elements = []
+    for uid, attrs in _graph.g.nodes(data=True):
+        if attrs.get("asset_type") in _HIDDEN:
+            continue
+        degree = _graph.g.degree(uid)
+        label = uid if len(uid) <= 30 else uid[:27] + "\u2026"
+        skip = {"asset_type", "first_seen", "last_seen", "uid", "organization", "source"}
+        node_data = {
+            "id":        uid,
+            "label":     label,
+            "type":      attrs.get("asset_type", "unknown"),
+            "org":       attrs.get("organization", ""),
+            "org_color": org_colors.get(attrs.get("organization", ""), ""),
+            "source":    attrs.get("source", ""),
+            "degree":    degree,
+        }
+        for k, v in attrs.items():
+            if k not in skip and v:
+                if isinstance(v, list):
+                    v = ", ".join(str(x) for x in v) if v else ""
+                node_data[f"attr_{k}"] = str(v)
+        elements.append({"data": node_data})
+    for src, tgt, edge_attrs in _graph.g.edges(data=True):
+        src_type = _graph.g.nodes.get(src, {}).get("asset_type")
+        tgt_type = _graph.g.nodes.get(tgt, {}).get("asset_type")
+        if src_type in _HIDDEN or tgt_type in _HIDDEN:
+            continue
+        edge_uid = edge_attrs.get("edge_uid", f"{src}|{edge_attrs.get('edge_type', 'x')}|{tgt}")
+        elements.append({"data": {
+            "id":     edge_uid,
+            "source": src,
+            "target": tgt,
+            "label":  edge_attrs.get("edge_type", "").replace("_", " "),
+        }})
+    return jsonify({"elements": elements})
 
 
 @_app.route("/api/graph.graphml")

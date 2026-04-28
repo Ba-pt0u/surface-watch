@@ -28,7 +28,6 @@ dependencies = [
     "httpx>=0.27",
     # Graph / Cartography
     "networkx>=3.3",
-    "pyvis>=0.3",
     # Web
     "flask>=3.0",
     # Scheduling
@@ -56,6 +55,7 @@ where = ["src"]
     "web/templates/*.html",
     "web/static/*.css",
     "web/static/*.js",
+    "web/static/js/*.js",
 ]
 
 [tool.ruff]

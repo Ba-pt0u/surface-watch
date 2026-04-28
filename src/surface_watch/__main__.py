@@ -54,7 +54,6 @@ def _register_collectors() -> None:
 def run_scan_cycle(graph: AssetGraph, collectors: list[str] | None = None) -> None:
     """Execute a full scan cycle: collect → diff → alert → export."""
     from surface_watch.alerting.sekoia import process_diffs
-    from surface_watch.export.pyvis_map import generate_map
     from surface_watch.export.formats import export_json, export_graphml
 
     run_id = graph.start_run(collector=",".join(collectors or ["all"]))
@@ -108,9 +107,8 @@ def run_scan_cycle(graph: AssetGraph, collectors: list[str] | None = None) -> No
     # Save graph to SQLite
     graph.save()
 
-    # Export
+    # Export (graph JSON/GraphML — the map is now served live by Flask)
     try:
-        generate_map(graph.g)
         export_json(graph.g)
         export_graphml(graph.g)
     except Exception as exc:

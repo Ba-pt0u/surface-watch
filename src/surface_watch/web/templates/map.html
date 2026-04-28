@@ -1,16 +1,450 @@
 {% extends "base.html" %}
-{% block title %}Cartographie &mdash; Surface Watch{% endblock %}
+{% block title %}Carte &mdash; Surface Watch{% endblock %}
+
+{% block head_extra %}
+<style>
+  main   { padding: 0 !important; max-width: 100% !important; overflow: hidden !important; }
+  footer { display: none !important; }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="map-page">
-    {% if map_exists %}
-        <iframe src="/map/raw" class="map-frame"></iframe>
-    {% else %}
-        <div class="empty-state">
-            <h2>Aucune cartographie disponible</h2>
-            <p>La carte sera g&eacute;n&eacute;r&eacute;e automatiquement apr&egrave;s le premier cycle de collecte.</p>
-            <p>Lancez un scan ou attendez le prochain cycle planifi&eacute;.</p>
-        </div>
-    {% endif %}
-</div>
+{% set types = [
+  ("domain",         "#003B5C", "Domain",   "#fff"),
+  ("subdomain",      "#00B2A9", "Subdomain", "#fff"),
+  ("ip_address",     "#FFCD00", "IP",        "#333"),
+  ("certificate",    "#9595D2", "Cert",      "#fff"),
+  ("port_service",   "#E87722", "Port",      "#fff"),
+  ("cloud_resource", "#4CAF50", "Cloud",     "#fff"),
+] %}
+
+<div class="map-outer">
+
+  <!-- ── Toolbar ─────────────────────────────────────────────────── -->
+  <div class="map-toolbar">
+    <div class="map-tb-left">
+
+      <!-- Layout buttons -->
+      <div class="map-layout-group" role="group" aria-label="Mode de vue">
+        <button class="map-layout-btn active" data-layout="dagre"
+                title="Vue hiérarchique — domain → subdomain → IP → port (dagre)">
+          &#8616; Hiérarchique
+        </button>
+        <button class="map-layout-btn" data-layout="cose"
+                title="Vue force — clustering naturel par organisation (cose)">
+          &#11835; Force
+        </button>
+        <button class="map-layout-btn" data-layout="concentric"
+                title="Vue exposition — assets les plus connectés au centre">
+          &#9678; Exposition
+        </button>
+      </div>
+
+      <span class="map-sep"></span>
+
+      <!-- Type filter pills -->
+      <div class="map-type-filters">
+        {% for ttype, color, label, text in types %}
+        <label class="map-type-pill" style="--pill-bg:{{ color }};--pill-text:{{ text }}">
+          <input type="checkbox" class="map-type-cb" value="{{ ttype }}" checked>
+          <span>{{ label }}</span>
+        </label>
+        {% endfor %}
+      </div>
+
+      {% if organizations|length > 1 %}
+      <span class="map-sep"></span>
+      <select class="map-org-select" id="orgFilter" aria-label="Filtrer par organisation">
+        <option value="">Toutes les orgs</option>
+        {% for org in organizations %}
+        <option value="{{ org.id }}">{{ org.name }}</option>
+        {% endfor %}
+      </select>
+      {% endif %}
+
+      <span class="map-sep"></span>
+      <input type="search" id="mapSearch" class="map-search"
+             placeholder="&#x1F50D; Rechercher un asset…" aria-label="Rechercher">
+    </div>
+
+    <div class="map-tb-right">
+      <span class="map-stats-label" id="mapStats">
+        {{ node_count }} assets &middot; {{ edge_count }} relations
+      </span>
+      <button class="map-icon-btn" id="btnFit" title="Recadrer (touche F)">&#x26F6;</button>
+    </div>
+  </div><!-- .map-toolbar -->
+
+  <!-- ── Body (legend + canvas + info panel) ──────────────────────── -->
+  <div class="map-body">
+
+    <!-- Legend (left) -->
+    <div class="map-legend">
+      <div class="map-legend-section">Types d'assets</div>
+      {% for ttype, color, label, text in types %}
+      <div class="map-legend-row">
+        <span class="map-legend-dot" style="background:{{ color }}"></span>
+        <span>{{ label }}</span>
+      </div>
+      {% endfor %}
+
+      {% if organizations|length > 1 %}
+      <div class="map-legend-section" style="margin-top:16px">Organisations</div>
+      {% for org in organizations %}
+      <div class="map-legend-row">
+        <span class="map-legend-line" style="background:{{ org.brand_color }}"></span>
+        <span>{{ org.name }}</span>
+      </div>
+      {% endfor %}
+      {% endif %}
+
+      <div class="map-legend-hint">
+        <strong>Clic</strong> &rarr; sélectionner<br>
+        <strong>Double-clic</strong> &rarr; Assets &#8599;<br>
+        <strong>F</strong> &rarr; recadrer
+      </div>
+    </div><!-- .map-legend -->
+
+    <!-- Cytoscape canvas -->
+    <div id="cy"></div>
+
+    <!-- Info panel (right, slides in on node click) -->
+    <div class="map-info" id="mapInfo">
+      <div class="map-info-hdr">
+        <span class="map-info-uid" id="infoUID"></span>
+        <button class="map-icon-btn" id="infoClose" title="Fermer">&#10005;</button>
+      </div>
+      <div class="map-info-body" id="infoBody"></div>
+      <div class="map-info-ftr">
+        <a class="map-info-link" id="infoLink" href="#" target="_blank" rel="noopener">
+          Voir dans Assets &#8599;
+        </a>
+      </div>
+    </div><!-- .map-info -->
+
+  </div><!-- .map-body -->
+</div><!-- .map-outer -->
+
+<script src="{{ url_for('static', filename='js/cytoscape.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/dagre.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/cytoscape-dagre.min.js') }}"></script>
+<script>
+'use strict';
+
+// ── Colour / shape registry (matches palette from style.css tokens) ────────
+const TYPE_STYLE = {
+  domain:         { bg:'#003B5C', border:'#002a42', text:'#ffffff', shape:'ellipse' },
+  subdomain:      { bg:'#00B2A9', border:'#008f88', text:'#ffffff', shape:'round-rectangle' },
+  ip_address:     { bg:'#FFCD00', border:'#b8960a', text:'#333333', shape:'rectangle' },
+  certificate:    { bg:'#9595D2', border:'#7070bb', text:'#ffffff', shape:'diamond' },
+  port_service:   { bg:'#E87722', border:'#c45c0a', text:'#ffffff', shape:'star' },
+  cloud_resource: { bg:'#4CAF50', border:'#388e3c', text:'#ffffff', shape:'hexagon' },
+};
+const DEFAULT_STYLE = { bg:'#888888', border:'#555555', text:'#ffffff', shape:'ellipse' };
+
+// ── Cytoscape stylesheet ───────────────────────────────────────────────────
+const CY_STYLE = [
+  {
+    selector: 'node',
+    style: {
+      'background-color':      'data(bg)',
+      'border-color':          'data(borderColor)',
+      'border-width':           3,
+      'label':                 'data(label)',
+      'color':                 'data(textColor)',
+      'font-size':              11,
+      'font-family':           'Noto Sans, Arial, sans-serif',
+      'text-valign':           'bottom',
+      'text-halign':           'center',
+      'text-margin-y':          5,
+      'text-outline-width':     2,
+      'text-outline-color':    '#0f1117',
+      'width':                 'mapData(degree, 0, 10, 24, 68)',
+      'height':                'mapData(degree, 0, 10, 24, 68)',
+      'shape':                 'data(shape)',
+      'min-zoomed-font-size':   8,
+      'transition-property':   'opacity',
+      'transition-duration':   '0.15s',
+    },
+  },
+  {
+    selector: 'node:selected',
+    style: {
+      'border-width':    5,
+      'border-color':   '#ffffff',
+      'overlay-opacity': 0.12,
+      'overlay-color':  '#ffffff',
+    },
+  },
+  {
+    selector: 'node.faded',
+    style: { 'opacity': 0.10 },
+  },
+  {
+    selector: 'edge',
+    style: {
+      'width':                   1.5,
+      'line-color':             'rgba(160,160,185,0.30)',
+      'target-arrow-color':     'rgba(160,160,185,0.40)',
+      'target-arrow-shape':     'vee',
+      'arrow-scale':             0.7,
+      'curve-style':            'bezier',
+      'label':                  '',
+      'font-size':               9,
+      'color':                  'rgba(200,200,215,0.7)',
+      'text-background-color':  '#0f1117',
+      'text-background-opacity': 0.75,
+      'text-background-padding': 2,
+      'min-zoomed-font-size':    12,
+    },
+  },
+  {
+    selector: 'edge:selected',
+    style: {
+      'line-color':         '#00B2A9',
+      'target-arrow-color': '#00B2A9',
+      'width':               2.5,
+      'label':              'data(label)',
+    },
+  },
+  {
+    selector: 'edge.faded',
+    style: { 'opacity': 0.04 },
+  },
+];
+
+// ── Layout presets ─────────────────────────────────────────────────────────
+const LAYOUTS = {
+  dagre: {
+    name:              'dagre',
+    rankDir:           'TB',
+    rankSep:            140,
+    nodeSep:             80,
+    edgeSep:             20,
+    animate:            true,
+    animationDuration:   380,
+    fit:                true,
+    padding:             50,
+  },
+  cose: {
+    name:              'cose',
+    animate:            true,
+    animationDuration:   500,
+    fit:                true,
+    padding:             50,
+    nodeRepulsion:       5000,
+    edgeElasticity:      100,
+    nestingFactor:       1.2,
+    gravity:             1,
+    numIter:             1000,
+    initialTemp:         200,
+    coolingFactor:       0.95,
+    minTemp:             1.0,
+  },
+  concentric: {
+    name:              'concentric',
+    animate:            true,
+    animationDuration:   380,
+    fit:                true,
+    padding:             50,
+    concentric:          (node) => node.degree(),
+    levelWidth:          () => 3,
+    minNodeSpacing:      50,
+    spacingFactor:       1.6,
+  },
+};
+
+let cy            = null;
+let currentLayout = 'dagre';
+
+// ── Boot: load graph JSON then initialise Cytoscape ───────────────────────
+async function boot() {
+  let data;
+  try {
+    const resp = await fetch('/api/graph.json');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    data = await resp.json();
+  } catch (err) {
+    document.getElementById('cy').innerHTML =
+      `<div style="color:#e87722;padding:60px 40px;font-size:14px;text-align:center">
+        Erreur de chargement du graphe&nbsp;: ${err}<br>
+        <small style="color:rgba(255,255,255,.4)">Vérifiez que le backend est démarré.</small>
+       </div>`;
+    return;
+  }
+
+  // Enrich node data with colour/shape based on asset type
+  const elements = data.elements.map(el => {
+    if (el.data.source === undefined) {               // node (no source/target)
+      const s = TYPE_STYLE[el.data.type] || DEFAULT_STYLE;
+      el.data.bg          = s.bg;
+      el.data.borderColor = el.data.org_color || s.border;
+      el.data.textColor   = s.text;
+      el.data.shape       = s.shape;
+    }
+    return el;
+  });
+
+  cy = cytoscape({
+    container:           document.getElementById('cy'),
+    elements:            elements,
+    style:               CY_STYLE,
+    layout:              LAYOUTS[currentLayout],
+    zoom:                1,
+    minZoom:             0.03,
+    maxZoom:             10,
+    wheelSensitivity:    0.25,
+    boxSelectionEnabled: false,
+    selectionType:       'single',
+  });
+
+  updateStats();
+  bindUIEvents();
+}
+
+// ── Stats label ────────────────────────────────────────────────────────────
+function updateStats() {
+  if (!cy) return;
+  const nodes = cy.nodes().filter(n => n.style('display') !== 'none').length;
+  const edges = cy.edges().filter(e => e.style('display') !== 'none').length;
+  document.getElementById('mapStats').textContent = `${nodes} assets · ${edges} relations`;
+}
+
+// ── Neighbourhood highlight ────────────────────────────────────────────────
+function highlight(node) {
+  const hood = node.closedNeighborhood();
+  cy.elements().not(hood).addClass('faded');
+  hood.removeClass('faded');
+}
+function clearHighlight() {
+  cy.elements().removeClass('faded');
+  cy.nodes().unselect();
+  cy.edges().unselect();
+}
+
+// ── Info panel ─────────────────────────────────────────────────────────────
+function showInfo(node) {
+  const d = node.data();
+  const s = TYPE_STYLE[d.type] || DEFAULT_STYLE;
+
+  document.getElementById('infoUID').textContent = d.id;
+  document.getElementById('infoLink').href = `/assets?q=${encodeURIComponent(d.id)}`;
+
+  let html = `<div class="map-info-pill" style="background:${s.bg};color:${s.text}">${d.type || 'unknown'}</div>`;
+
+  if (d.org) {
+    html += `<div class="map-info-org" style="border-left:3px solid ${d.org_color || '#888'}">
+               <span>${d.org}</span></div>`;
+  }
+
+  html += `<dl class="map-info-dl">`;
+  html += `<dt>Connexions</dt><dd>${d.degree}</dd>`;
+  if (d.source) { html += `<dt>Source</dt><dd>${d.source}</dd>`; }
+
+  const skip = new Set([
+    'id','label','type','org','org_color','bg','borderColor','textColor','shape','degree','source'
+  ]);
+  for (const [k, v] of Object.entries(d)) {
+    if (skip.has(k) || !v) continue;
+    const kd = k.startsWith('attr_') ? k.slice(5) : k;
+    html += `<dt>${kd}</dt><dd>${String(v)}</dd>`;
+  }
+  html += `</dl>`;
+
+  document.getElementById('infoBody').innerHTML = html;
+  document.getElementById('mapInfo').classList.add('open');
+}
+function hideInfo() {
+  document.getElementById('mapInfo').classList.remove('open');
+}
+
+// ── Filter logic ───────────────────────────────────────────────────────────
+function applyFilters() {
+  const checked = new Set(
+    [...document.querySelectorAll('.map-type-cb:checked')].map(cb => cb.value)
+  );
+  const orgVal = (document.getElementById('orgFilter') || {}).value || '';
+  const q      = document.getElementById('mapSearch').value.toLowerCase().trim();
+
+  cy.batch(() => {
+    cy.nodes().forEach(node => {
+      const d  = node.data();
+      const ok = checked.has(d.type)
+              && (!orgVal || d.org === orgVal)
+              && (!q     || d.id.toLowerCase().includes(q));
+      node.style('display', ok ? 'element' : 'none');
+    });
+    cy.edges().forEach(edge => {
+      const hidden = edge.source().style('display') === 'none'
+                  || edge.target().style('display') === 'none';
+      edge.style('display', hidden ? 'none' : 'element');
+    });
+  });
+
+  updateStats();
+}
+
+// ── UI event bindings ──────────────────────────────────────────────────────
+function bindUIEvents() {
+
+  // Node single click → select + highlight neighbourhood + show info panel
+  cy.on('tap', 'node', evt => {
+    clearHighlight();
+    highlight(evt.target);
+    showInfo(evt.target);
+  });
+
+  // Node double-click → open asset detail in new tab
+  cy.on('dbltap', 'node', evt => {
+    window.open(`/assets?q=${encodeURIComponent(evt.target.id())}`, '_blank', 'noopener');
+  });
+
+  // Edge click → select (edge label shown via :selected selector)
+  cy.on('tap', 'edge', evt => {
+    clearHighlight();
+    evt.target.select();
+  });
+
+  // Background click → reset
+  cy.on('tap', evt => {
+    if (evt.target === cy) {
+      clearHighlight();
+      hideInfo();
+    }
+  });
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { clearHighlight(); hideInfo(); }
+    if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey) cy.fit(50);
+  });
+
+  // Toolbar
+  document.getElementById('btnFit')
+    .addEventListener('click', () => cy.fit(50));
+  document.getElementById('infoClose')
+    .addEventListener('click', () => { hideInfo(); clearHighlight(); });
+
+  // Layout switcher buttons
+  document.querySelectorAll('.map-layout-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.map-layout-btn')
+        .forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentLayout = btn.dataset.layout;
+      cy.layout(LAYOUTS[currentLayout]).run();
+    });
+  });
+
+  // Filters
+  document.querySelectorAll('.map-type-cb')
+    .forEach(cb => cb.addEventListener('change', applyFilters));
+  const orgFilter = document.getElementById('orgFilter');
+  if (orgFilter) orgFilter.addEventListener('change', applyFilters);
+  document.getElementById('mapSearch').addEventListener('input', applyFilters);
+}
+
+// ── Start ──────────────────────────────────────────────────────────────────
+boot();
+</script>
 {% endblock %}
