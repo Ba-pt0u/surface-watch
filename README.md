@@ -4,18 +4,25 @@ Outil de monitoring continu de la surface d'attaque externe. Collecte et correle
 
 ## Quick Start
 
-### 1. Configuration
+### 1. Cloner le dépôt
 
 ```bash
-# Copier et renseigner les variables d'environnement
-cp .env.example .env
-# Editer .env : SEKOIA_INTAKE_KEY, AZURE_* (optionnel)
+git clone https://github.com/Ba-pt0u/surface-watch.git
+cd surface-watch
+```
 
-# Definir le perimetre a surveiller
+### 2. Configuration
+
+```bash
+# Variables d'environnement
+cp .env.example .env
+# Editer .env : SEKOIA_INTAKE_KEY obligatoire, AZURE_* et IPINFO_TOKEN optionnels
+
+# Périmètre à surveiller
 # Editer config/scope.yaml : domaines racines, ranges IP, exclusions
 ```
 
-### 2. Deploiement Docker (recommande)
+### 3. Déploiement Docker (recommandé)
 
 ```bash
 docker compose build
@@ -28,7 +35,7 @@ docker compose logs -f surface-watch
 # http://localhost:8080
 ```
 
-### 3. Deploiement venv (alternatif)
+### 4. Deploiement venv (alternatif)
 
 ```bash
 python3.11 -m venv .venv
