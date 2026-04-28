@@ -274,8 +274,10 @@ async function boot() {
   }
 
   // Enrich node data with colour/shape based on asset type
+  // NOTE: nodes have `data.source` (= collector name) but NOT `data.target`.
+  //       Edges have both `data.source` (from-uid) AND `data.target` (to-uid).
   const elements = data.elements.map(el => {
-    if (el.data.source === undefined) {               // node (no source/target)
+    if (el.data.target === undefined) {               // node — only edges have target
       const s = TYPE_STYLE[el.data.type] || DEFAULT_STYLE;
       el.data.bg          = s.bg;
       el.data.borderColor = el.data.org_color || s.border;
