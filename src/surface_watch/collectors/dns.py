@@ -113,7 +113,7 @@ class DNSCollector(BaseCollector):
                         assets.append(ip_asset)
                         edges.append(Edge(source_uid=fqdn, target_uid=rdata_str, edge_type=EdgeType.RESOLVES_TO))
 
-                    # If CNAME, create subdomain/target node + edges
+                    # If CNAME, create subdomain/target node + edges, then resolve it
                     if rrtype == "CNAME":
                         sub = Subdomain(uid=rdata_str, fqdn=rdata_str, parent_domain=root_domain,
                                         source=self.name, organization=org_id)
@@ -123,6 +123,8 @@ class DNSCollector(BaseCollector):
                         # Parent domain owns this subdomain (if target is under the same root)
                         if rdata_str.endswith(f".{root_domain}") or rdata_str == root_domain:
                             edges.append(Edge(source_uid=root_domain, target_uid=rdata_str, edge_type=EdgeType.HAS_SUBDOMAIN))
+                        # Resolve the CNAME target's own A/AAAA records
+                        self._resolve_domain(rdata_str, root_domain, org_id, assets, edges, errors)
 
             except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers):
                 pass
