@@ -2,6 +2,43 @@
 
 Outil de monitoring continu de la surface d'attaque externe. Collecte et correle les donnees depuis de multiples sources (DNS, Certificate Transparency, Azure/Entra ID, RDAP, scan de ports) pour produire une cartographie relationnelle et des alertes vers Sekoia.io.
 
+## Prerequisites
+
+### Docker (recommended deployment)
+
+| Dependency | Min. version | Install |
+|---|---|---|
+| Docker Engine | 24.x | https://docs.docker.com/engine/install/ |
+| Docker Compose plugin | v2 (`docker compose`) | Included with Docker Desktop / Engine ≥ 24 |
+
+```bash
+# Ubuntu / Debian
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER   # then log out/in
+
+# Verify
+docker --version
+docker compose version
+```
+
+### Python venv (alternative deployment)
+
+| Dependency | Min. version |
+|---|---|
+| Python | 3.11+ |
+| pip | any recent |
+| nmap | 7.x (optional, for port scanning) |
+
+```bash
+# Ubuntu / Debian
+sudo apt install python3.11 python3.11-venv nmap
+
+# macOS (Homebrew)
+brew install python@3.11 nmap
+```
+
+> **Windows dev** : nmap n'est pas disponible — le collecteur portscan est ignoré automatiquement. Les autres collecteurs fonctionnent normalement.
+
 ## Quick Start
 
 ### 1. Cloner le dépôt
