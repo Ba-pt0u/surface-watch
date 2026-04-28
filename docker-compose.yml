@@ -2,6 +2,9 @@ services:
   surface-watch:
     build: .
     env_file: .env
+    environment:
+      SW_CONFIG_DIR: /app/config
+      SW_DATA_DIR: /app/data
     volumes:
       - ./data:/app/data
       - ./config:/app/config
