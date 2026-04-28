@@ -101,8 +101,8 @@ Scheduler (APScheduler)  +  Certstream listener  +  Flask dashboard
                     |
         +-----------+-----------+
         |           |           |
-    Diff/Alert   Cartograph   Export
-    (Sekoia)     (pyvis)    (JSON/GraphML)
+    Diff/Alert   Carte live   Export
+    (Sekoia)  (Cytoscape.js) (JSON/GraphML)
 ```
 
 ## Sources de donnees
@@ -124,17 +124,24 @@ Scheduler (APScheduler)  +  Certstream listener  +  Flask dashboard
 - Fallback : fichier local `data/alerts.log`
 
 ### Cartographie
-- **HTML interactif** : `data/map.html` (pyvis, vis.js embarqué — aucune dépendance CDN) — visible via le dashboard `/map`
-  - Layout arborescent : domaine → sous-domaines → IPs/certificats → ports
+- **HTML interactif** : servie live sur `/map` (Cytoscape.js — JS bundlés localement, aucune dépendance CDN)
+  - **Vue Hiérarchique** (dagre) : domaine → sous-domaines → IPs/certificats → ports
+  - **Vue Force** (cose) : clustering naturel par organisation, exploration libre
+  - **Vue Exposition** (concentric) : assets les plus connectés au centre = les plus exposés
+  - Filtre par type d'asset, organisation, recherche textuelle
+  - Clic sur un nœud → panneau de détail avec tous les attributs
+  - Double-clic → page asset correspondante
   - Nœuds DNS records masqués (trop nombreux) — présents dans la base SQLite
-  - Overlay légende flottante, compteur d'assets, bouton retour dashboard
-- **JSON** : `data/graph.json` (format node-link NetworkX) — `/api/graph.json`
+- **JSON Cytoscape** : `/api/graph.json` — données live (Cytoscape.js-compatible, inclut degree, org_color, type, attrs)
+- **JSON node-link** : `data/graph.json` — `/api/graph.json` (download via bouton topbar)
 - **GraphML** : `data/graph.graphml` (compatible Gephi, yEd, Neo4j) — `/api/graph.graphml`
 
 ### Dashboard Web
 - `http://localhost:8080/` — stats, derniers scans, alertes recentes
-- `http://localhost:8080/map` — cartographie interactive
-- API JSON : `/api/stats`, `/api/alerts`
+- `http://localhost:8080/assets` — navigateur d'assets (filtre par type, recherche)
+- `http://localhost:8080/scans` — historique des cycles de scan
+- `http://localhost:8080/map` — cartographie interactive (Cytoscape.js — 3 vues)
+- API JSON : `/api/stats`, `/api/alerts`, `/api/assets`, `/api/scan/status`, `/api/graph.json`, `/api/graph.graphml`
 
 ## Configuration
 

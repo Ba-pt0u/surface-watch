@@ -1,11 +1,12 @@
 # surface-watch — AI / Developer notes
 
 ## Project overview
-Continuous attack surface monitoring tool. Collects from DNS, Certificate Transparency, Azure/Entra ID, RDAP, and lightweight port scanning. Produces CEF alerts to Sekoia.io, interactive relationship cartography (pyvis), and JSON/GraphML exports.
+Continuous attack surface monitoring tool. Collects from DNS, Certificate Transparency, Azure/Entra ID, RDAP, and lightweight port scanning. Produces CEF alerts to Sekoia.io, interactive relationship cartography (Cytoscape.js — 3 layouts, live via Flask), and JSON/GraphML exports.
 
 ## Tech stack
 - **Language**: Python 3.11+
-- **Key deps**: dnspython, certstream, azure-identity/mgmt-*, msal, python-nmap, networkx, pyvis, flask, apscheduler, pydantic
+- **Key deps**: dnspython, certstream, azure-identity/mgmt-*, msal, python-nmap, networkx, flask, apscheduler, pydantic
+- **Cartography JS**: cytoscape.js v3.30.2 + dagre.js v0.8.5 + cytoscape-dagre v2.5.0 (bundled locally in `web/static/js/` — offline-capable, no CDN)
 - **Deployment**: Docker Compose on Ubuntu, `cap_add: NET_RAW` for nmap
 - **Database**: SQLite (in `data/surface_watch.db`)
 
@@ -15,8 +16,9 @@ __main__.py → launches scheduler (APScheduler) + certstream listener + Flask w
 collectors/  → each collector implements BaseCollector.collect()
 graph.py     → AssetGraph wraps NetworkX + SQLite persistence + diff detection
 alerting/    → Sekoia HTTP intake (CEF) + local syslog fallback
-export/      → pyvis HTML, JSON node-link, GraphML
-web/         → Flask dashboard: stats, alerts, cartography, API endpoints
+export/      → JSON node-link (data/graph.json), GraphML (data/graph.graphml)
+web/         → Flask dashboard: stats, asset browser, scan history, live cartography (Cytoscape.js)
+web/static/js/ → cytoscape.min.js, dagre.min.js, cytoscape-dagre.min.js (local, offline-capable)
 ```
 
 ## Configuration
@@ -52,8 +54,7 @@ docker compose logs -f surface-watch
 - certstream WebSocket can disconnect — auto-reconnect built in
 - RDAP bootstrap servers have varying rate limits — use Semaphore
 - iptoasn.com public API discontinued 2020-12-31 — using ipinfo.io instead (local DB via pyasn is the long-term alternative)
-- vis.js CDN blocked by corporate TLS proxy — use `cdn_resources="in_line"` in pyvis
-- pyvis `write_html()` crashes on Windows (cp1252) — use `generate_html()` + `write_text(encoding="utf-8")`
+- pyvis removed (2026-04-28): map is now served live by Flask via `/api/graph.json` → Cytoscape.js. `export/pyvis_map.py` is kept but not called.
 
 ## AI assistant instructions
 ## 1. Think Before Coding

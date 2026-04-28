@@ -2,7 +2,7 @@
 
 > Document unique de référence : backlog, décisions d'architecture, évolutions prévues, et documentation technique complète pour tout assistant IA ou développeur reprenant le projet.
 >
-> **Mis à jour :** 2026-04-27  
+> **Mis à jour :** 2026-04-28  
 > **Statut global :** v1.0 implémentée et validée sur saur.fr
 
 ---
@@ -58,7 +58,7 @@
 | Collecteur port scanner (nmap) | `collectors/portscan.py` | ✅ Implémenté (nmap requis — prod Docker uniquement) |
 | IP enrichment (ipinfo.io) | `collectors/rdap.py::IPEnrichCollector` | ✅ Implémenté (IPs privées non enrichies) |
 | Alerting CEF → Sekoia HTTP | `alerting/sekoia.py` | ✅ 6 tests — fallback fichier local OK |
-| Export HTML pyvis | `export/pyvis_map.py` | ✅ Testé live (~720 KB, vis.js embarqué, layout arborescent) |
+| Cartographie interactive | `web/templates/map.html`, `web/static/js/` | ✅ Cytoscape.js v3.30.2 — 3 vues (dagre/cose/concentric), live via `/api/graph.json`, JS bundlés localement |
 | Export JSON node-link | `export/formats.py` | ✅ Testé live |
 | Export GraphML | `export/formats.py` | ✅ Testé live |
 | Dashboard Flask | `web/app.py`, `web/templates/` | ✅ Refonte UI 2026-04-27 — alertes CEF parsées |
@@ -80,8 +80,8 @@
 |---|---|---|---|
 | BUG-001 | GraphML export échoue si un attribut est `None` | Corrigé v1.0 | — |
 | BUG-002 | CNAME targets créés sans arête → nœuds orphelins dans le graphe | Corrigé v1.0 | `dns.py` ajoute `RESOLVES_TO` + `HAS_SUBDOMAIN` depuis la cible CNAME |
-| BUG-003 | `pyvis.write_html()` utilise le locale système (cp1252 Windows) → crash Unicode | Corrigé v1.0 | `generate_html()` + `write_text(encoding="utf-8")` |
-| BUG-004 | CSS `body > div:not(#mynetwork)` masquait le wrapper `.card` de pyvis → graphe invisible | Corrigé v1.0 | Règle `body > .card { height: 100vh }` explicite |
+| BUG-003 | `pyvis.write_html()` utilise le locale système (cp1252 Windows) → crash Unicode | **Non applicable** | pyvis retiré — Cytoscape.js servi directement par Flask |
+| BUG-004 | CSS `body > div:not(#mynetwork)` masquait le wrapper `.card` de pyvis → graphe invisible | **Non applicable** | pyvis retiré — Cytoscape.js servi directement par Flask |
 | LIM-001 | Scan actif limité à 256 hosts max par CIDR (anti-DoS volontaire) | Info | Modifier `portscan.py:45` |
 | LIM-002 | Dashboard Flask sans authentification | Info | Réseau interne uniquement |
 | LIM-003 | IPEnrichCollector appelé séquentiellement (lent pour >100 IPs) | Faible | Futur : `ThreadPoolExecutor` |
@@ -202,7 +202,7 @@
 - `graph.py` : auto-assignation + propagation de l'org via `DOMAIN_TO_ORG` ; `stats()` retourne `by_organization`
 - `collectors/dns.py` : paramètre `org_id` propagé à tous les assets créés
 - `alerting/sekoia.py` : extension CEF `cs4=<org_id> cs4Label=organization`
-- `export/pyvis_map.py` : bordure de nœud colorée par org, légende dynamique multi-org
+- `export/pyvis_map.py` : bordure de nœud colorée par org, légende dynamique multi-org — **remplacé par Cytoscape.js (org border-color injecté via `/api/graph.json` `org_color` field)**
 - `web/app.py` : filtre `?org=` dans `/api/alerts` et route `/` ; parsing `cs4` dans les alertes
 - `web/templates/dashboard.html` : onglets de filtrage org (affiché si >1 org configurée)
 - `web/static/style.css` : `.org-tabs` / `.org-tab` / `.org-tab-active` avec `--org-color`
@@ -367,7 +367,7 @@ Extensions utilisées : `dhost` (FQDN), `src` (IP), `cs1/cs1Label` (assetType), 
 ### ADR-007 — Couleurs Saur pour la cartographie
 **Date :** 2026-04-27 · **Statut :** Accepté
 
-**Contexte :** Choix des couleurs des nœuds dans la cartographie pyvis.
+**Contexte :** Choix des couleurs des nœuds dans la cartographie (anciennement pyvis, désormais Cytoscape.js).
 
 **Décision :** Utiliser la palette de la charte graphique Saur définie dans `AGENTS.md`.
 
@@ -409,7 +409,7 @@ surface-watch/
 │   └── wordlist.txt                # Wordlist pour brute-force DNS (107 mots)
 ├── data/                           # Volume Docker (gitignore sauf .gitkeep)
 │   ├── surface_watch.db            # SQLite : assets, edges, scan_runs
-│   ├── map.html                    # Cartographie pyvis (auto-généré)
+│   ├── map.html                    # Cartographie Cytoscape.js (servie live — non générée)
 │   ├── graph.json                  # Export JSON node-link (auto-généré)
 │   ├── graph.graphml               # Export GraphML (auto-généré)
 │   └── alerts.log                  # Log local des alertes CEF
@@ -440,9 +440,17 @@ surface-watch/
 │       ├── templates/
 │       │   ├── base.html
 │       │   ├── dashboard.html
-│       │   └── map.html
+│       │   ├── assets.html
+│       │   ├── scans.html
+│       │   ├── scan_detail.html
+│       │   ├── map.html           # Cytoscape.js (3 layouts, live data)
+│       │   └── map_empty.html
 │       └── static/
-│           └── style.css
+│           ├── style.css
+│           └── js/
+│               ├── cytoscape.min.js        # v3.30.2 (local)
+│               ├── dagre.min.js            # v0.8.5 (local)
+│               └── cytoscape-dagre.min.js  # v2.5.0 (local)
 ├── tests/
 │   ├── test_graph.py               # 9 tests AssetGraph
 │   ├── test_models.py              # 7 tests modèles Pydantic
@@ -525,8 +533,7 @@ __main__.py::run_scan_cycle(graph, collectors)
   │   └── graph.save() → upsert SQLite (assets + edges)
   │
   └── Export
-      ├── pyvis_map.generate_map(graph.g) → data/map.html
-      ├── formats.export_json(graph.g)    → data/graph.json
+      ├── formats.export_json(graph.g)    → data/graph.json   (+ servi live /api/graph.json Cytoscape)
       └── formats.export_graphml(graph.g) → data/graph.graphml
 ```
 
