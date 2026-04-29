@@ -3,104 +3,340 @@
 
 {% block content %}
 <div class="page-header">
-    <div>
-        <div class="page-title">Assets{% if asset_type %} &mdash; {{ asset_type }}{% endif %}</div>
-        <div class="page-subtitle">{{ assets|length }} r&eacute;sultat(s) &mdash; {{ now }}</div>
-    </div>
+  <div>
+    <div class="page-title">Assets{% if asset_type %} &mdash; {{ asset_type }}{% endif %}</div>
+    <div class="page-subtitle">{{ assets|length }} r&eacute;sultat(s) &mdash; {{ now }}</div>
+  </div>
+  <div class="view-tabs">
+    <button class="view-tab active" id="tab-table" onclick="switchView('table')">&#9776; Tableau</button>
+    <button class="view-tab"        id="tab-tree"  onclick="switchView('tree')">&#9663; Arborescence</button>
+  </div>
 </div>
 
 <div class="assets-layout">
-    <!-- Sidebar: type filter -->
-    <aside class="assets-sidebar">
-        <div class="sidebar-title">Type</div>
-        <nav class="sidebar-nav">
-            <a href="/assets" class="sbnav {% if not asset_type %}sbnav-active{% endif %}">
-                Tous
-                <span class="sbnav-count">{{ type_counts.values()|sum }}</span>
-            </a>
-            {% set type_info = [
-                ('domain',         '🌐', '#003B5C', 'Domains'),
-                ('subdomain',      '🔗', '#00B2A9', 'Subdomains'),
-                ('ip_address',     '💻', '#FFCD00', 'IPs'),
-                ('certificate',    '🔒', '#9595D2', 'Certificats'),
-                ('port_service',   '⚡', '#E87722', 'Ports'),
-                ('cloud_resource', '☁',  '#4CAF50', 'Cloud'),
-            ] %}
-            {% for t, icon, color, label in type_info %}
-            {% if type_counts.get(t, 0) > 0 %}
-            <a href="/assets?type={{ t }}{% if search %}&q={{ search }}{% endif %}"
-               class="sbnav {% if asset_type == t %}sbnav-active{% endif %}"
-               style="--sbnav-color: {{ color }}">
-                {{ icon }} {{ label }}
-                <span class="sbnav-count">{{ type_counts.get(t, 0) }}</span>
-            </a>
-            {% endif %}
+
+  <!-- ── Sidebar ──────────────────────────────────────────────────── -->
+  <aside class="assets-sidebar">
+
+    {# Hidden form that holds org+source, submitted by sidebar selects #}
+    <form method="get" action="/assets" id="sideFilterForm" style="display:none">
+      <input type="hidden" name="type" value="{{ asset_type }}">
+      <input type="hidden" name="q"    value="{{ search }}">
+    </form>
+
+    <div class="sidebar-title">Type</div>
+    <nav class="sidebar-nav">
+      {% set _org = org_filter %}{% set _src = source_filter %}{% set _q = search %}
+      <a href="/assets?{{ ('org='+_org+'&') if _org else '' }}{{ ('source='+_src+'&') if _src else '' }}{{ ('q='+_q+'&') if _q else '' }}"
+         class="sbnav {% if not asset_type %}sbnav-active{% endif %}">
+        Tous <span class="sbnav-count">{{ type_counts.values()|sum }}</span>
+      </a>
+      {% set type_info = [
+          ('domain',         '&#127760;', '#003B5C', 'Domains'),
+          ('subdomain',      '&#128279;', '#00B2A9', 'Subdomains'),
+          ('ip_address',     '&#128187;', '#FFCD00', 'IPs'),
+          ('certificate',    '&#128274;', '#9595D2', 'Certificats'),
+          ('port_service',   '&#9889;',   '#E87722', 'Ports'),
+          ('cloud_resource', '&#9729;',   '#4CAF50', 'Cloud'),
+      ] %}
+      {% for t, icon, color, label in type_info %}
+      {% if type_counts.get(t, 0) > 0 %}
+      <a href="/assets?type={{ t }}{{ ('&org='+_org) if _org else '' }}{{ ('&source='+_src) if _src else '' }}{{ ('&q='+_q) if _q else '' }}"
+         class="sbnav {% if asset_type == t %}sbnav-active{% endif %}"
+         style="--sbnav-color: {{ color }}">
+        {{ icon }} {{ label }}
+        <span class="sbnav-count">{{ type_counts.get(t, 0) }}</span>
+      </a>
+      {% endif %}
+      {% endfor %}
+    </nav>
+
+    {% if all_orgs %}
+    <div class="sidebar-title" style="margin-top:18px">Organisation</div>
+    <select class="sidebar-select" form="sideFilterForm" name="org"
+            onchange="document.getElementById('sideFilterForm').submit()">
+      <option value="">Toutes</option>
+      {% for org in all_orgs %}
+      <option value="{{ org }}" {% if org_filter == org %}selected{% endif %}>{{ org }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+
+    {% if all_sources %}
+    <div class="sidebar-title" style="margin-top:14px">Source</div>
+    <select class="sidebar-select" form="sideFilterForm" name="source"
+            onchange="document.getElementById('sideFilterForm').submit()">
+      <option value="">Toutes</option>
+      {% for src in all_sources %}
+      <option value="{{ src }}" {% if source_filter == src %}selected{% endif %}>{{ src }}</option>
+      {% endfor %}
+    </select>
+    {% endif %}
+
+    {% if org_filter or source_filter %}
+    <a href="/assets?{{ ('type='+asset_type+'&') if asset_type else '' }}{{ ('q='+search) if search else '' }}"
+       class="sidebar-reset">&#10005; R&eacute;init. filtres</a>
+    {% endif %}
+
+  </aside>
+
+  <!-- ── Main ─────────────────────────────────────────────────────── -->
+  <div class="assets-main">
+
+    <!-- Search bar (preserves type/org/source) -->
+    <form class="search-bar" method="get" action="/assets">
+      {% if asset_type    %}<input type="hidden" name="type"   value="{{ asset_type }}">{% endif %}
+      {% if org_filter    %}<input type="hidden" name="org"    value="{{ org_filter }}">{% endif %}
+      {% if source_filter %}<input type="hidden" name="source" value="{{ source_filter }}">{% endif %}
+      <input type="search" name="q" value="{{ search }}"
+             placeholder="Rechercher un asset (FQDN, IP, UID&hellip;)" class="search-input" autofocus>
+      <button type="submit" class="btn-primary">Rechercher</button>
+      {% if search or asset_type or org_filter or source_filter %}
+      <a href="/assets" class="btn-reset">&#x2715; R&eacute;initialiser</a>
+      {% endif %}
+    </form>
+
+    <!-- ── TABLE VIEW ──────────────────────────────────────────────── -->
+    <div id="view-table">
+      {% if assets %}
+      <div class="panel">
+        <div class="panel-body">
+          <table class="assets-table">
+            <thead><tr>
+              <th>UID / FQDN</th>
+              <th>Type</th>
+              <th>Source</th>
+              <th>Organisation</th>
+              <th>D&eacute;tails</th>
+              <th>Vu le</th>
+            </tr></thead>
+            <tbody>
+            {% for a in assets %}
+            {% set tc = {'domain':'#003B5C','subdomain':'#00B2A9','ip_address':'#ccaa00','certificate':'#7070bb','port_service':'#E87722','cloud_resource':'#388e3c'} %}
+            <tr>
+              <td class="asset-uid-main">
+                <span title="{{ a.uid }}">{{ a.uid }}</span>
+                <a class="asset-map-link" href="/map" title="Voir dans la carte" target="_blank">&#x1F5FA;</a>
+              </td>
+              <td>
+                <span class="type-pill"
+                      style="background:{{ tc.get(a.asset_type,'#aaa') }}20;color:{{ tc.get(a.asset_type,'#555') }};border-color:{{ tc.get(a.asset_type,'#aaa') }}40">
+                  {{ a.asset_type or '&mdash;' }}
+                </span>
+              </td>
+              <td class="ts">{{ a.get('source', '&mdash;') }}</td>
+              <td class="ts">{{ a.get('organization', '&mdash;') }}</td>
+              <td class="ts detail-cell">
+                {% if a.asset_type == 'ip_address' %}
+                  {{ a.get('asn_org','') }}{% if a.get('country') %} ({{ a.country }}){% endif %}
+                {% elif a.asset_type == 'port_service' %}
+                  port {{ a.get('port','?') }}/{{ a.get('protocol','tcp') }}
+                  {% if a.get('service_name') %} &mdash; {{ a.service_name }}{% endif %}
+                {% elif a.asset_type == 'certificate' %}
+                  {% if a.get('common_name') %}CN={{ a.common_name }}{% endif %}
+                {% elif a.asset_type == 'cloud_resource' %}
+                  {{ a.get('provider','') }} {{ a.get('resource_type','') }}
+                {% endif %}
+              </td>
+              <td class="ts">{{ (a.get('first_seen') or '')[:10] }}</td>
+            </tr>
             {% endfor %}
-        </nav>
-    </aside>
-
-    <!-- Main: search + table -->
-    <div class="assets-main">
-        <form class="search-bar" method="get" action="/assets">
-            {% if asset_type %}<input type="hidden" name="type" value="{{ asset_type }}">{% endif %}
-            <input type="search" name="q" value="{{ search }}" placeholder="Rechercher un asset (FQDN, IP, UID…)" class="search-input" autofocus>
-            <button type="submit" class="btn-primary">Rechercher</button>
-            {% if search or asset_type %}<a href="/assets" class="btn-reset">&#x2715; R&eacute;initialiser</a>{% endif %}
-        </form>
-
-        {% if assets %}
-        <div class="panel">
-            <div class="panel-body">
-                <table class="assets-table">
-                    <thead><tr>
-                        <th>UID / FQDN</th>
-                        <th>Type</th>
-                        <th>Source</th>
-                        <th>Organisation</th>
-                        <th>D&eacute;tails</th>
-                        <th>Vu le</th>
-                    </tr></thead>
-                    <tbody>
-                    {% for a in assets %}
-                    <tr>
-                        <td class="asset-uid-main">
-                            <span title="{{ a.uid }}">{{ a.uid }}</span>
-                            <a class="asset-map-link" href="/map" title="Voir dans la carte" target="_blank">&#x1F5FA;</a>
-                        </td>
-                        <td>
-                            {% set tc = {'domain':'#003B5C','subdomain':'#00B2A9','ip_address':'#ccaa00','certificate':'#7070bb','port_service':'#E87722','cloud_resource':'#388e3c'} %}
-                            <span class="type-pill" style="background:{{ tc.get(a.asset_type, '#aaa') }}20; color:{{ tc.get(a.asset_type, '#555') }}; border-color:{{ tc.get(a.asset_type,'#aaa') }}40">
-                                {{ a.asset_type or '—' }}
-                            </span>
-                        </td>
-                        <td class="ts">{{ a.get('source', '—') }}</td>
-                        <td class="ts">{{ a.get('organization', '—') }}</td>
-                        <td class="ts detail-cell">
-                            {% if a.asset_type == 'ip_address' %}
-                                {{ a.get('asn_org', '') }}{% if a.get('country') %} ({{ a.country }}){% endif %}
-                            {% elif a.asset_type == 'port_service' %}
-                                port {{ a.get('port', '?') }}/{{ a.get('protocol', 'tcp') }}
-                                {% if a.get('service_name') %} — {{ a.service_name }}{% endif %}
-                            {% elif a.asset_type == 'certificate' %}
-                                {% if a.get('common_name') %}CN={{ a.common_name }}{% endif %}
-                            {% elif a.asset_type == 'cloud_resource' %}
-                                {{ a.get('provider', '') }} {{ a.get('resource_type', '') }}
-                            {% endif %}
-                        </td>
-                        <td class="ts">{{ (a.get('first_seen') or '')[:10] }}</td>
-                    </tr>
-                    {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+            </tbody>
+          </table>
         </div>
-        {% else %}
-        <div class="empty-state-full">
-            <div class="icon">&#x1F50D;</div>
-            <h2>Aucun asset trouv&eacute;</h2>
-            <p>{% if search %}Aucun r&eacute;sultat pour &laquo;{{ search }}&raquo;.{% else %}Lancez un scan pour d&eacute;couvrir des assets.{% endif %}</p>
+      </div>
+      {% else %}
+      <div class="empty-state-full">
+        <div class="icon">&#x1F50D;</div>
+        <h2>Aucun asset trouv&eacute;</h2>
+        <p>{% if search %}Aucun r&eacute;sultat pour &laquo;{{ search }}&raquo;.
+           {% else %}Lancez un scan pour d&eacute;couvrir des assets.{% endif %}</p>
+      </div>
+      {% endif %}
+    </div><!-- #view-table -->
+
+    <!-- ── TREE VIEW ───────────────────────────────────────────────── -->
+    <div id="view-tree" style="display:none">
+      <div class="tree-toolbar">
+        <button class="btn-sm" onclick="treeExpandAll()">&#9660; Tout d&eacute;plier</button>
+        <button class="btn-sm" onclick="treeCollapseAll()">&#9658; Tout r&eacute;duire</button>
+        <span class="tree-hint">Cliquer sur un nœud pour d&eacute;plier/r&eacute;duire</span>
+      </div>
+      <div class="panel">
+        <div class="panel-body" id="treeContent">
+          <div class="tree-loading">Chargement de l&rsquo;arborescence&hellip;</div>
         </div>
-        {% endif %}
-    </div>
-</div>
+      </div>
+    </div><!-- #view-tree -->
+
+  </div><!-- .assets-main -->
+</div><!-- .assets-layout -->
+
+<script>
+'use strict';
+
+// ── View tab switcher ──────────────────────────────────────────────────────
+let treeLoaded = false;
+
+function switchView(v) {
+  document.getElementById('view-table').style.display = v === 'table' ? '' : 'none';
+  document.getElementById('view-tree').style.display  = v === 'tree'  ? '' : 'none';
+  document.getElementById('tab-table').classList.toggle('active', v === 'table');
+  document.getElementById('tab-tree').classList.toggle('active', v === 'tree');
+  if (v === 'tree' && !treeLoaded) loadTree();
+}
+
+// ── Tree loading ───────────────────────────────────────────────────────────
+async function loadTree() {
+  const params = new URLSearchParams(location.search);
+  params.delete('type'); // tree shows all types in hierarchy
+  try {
+    const resp = await fetch('/api/assets/tree?' + params.toString());
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const data = await resp.json();
+    renderTree(data.orgs);
+    treeLoaded = true;
+  } catch(e) {
+    document.getElementById('treeContent').innerHTML =
+      `<p style="color:var(--danger);padding:20px">Erreur : ${e}</p>`;
+  }
+}
+
+// ── Tree rendering ─────────────────────────────────────────────────────────
+function el(tag, cls, html) {
+  const e = document.createElement(tag);
+  if (cls)  e.className   = cls;
+  if (html) e.innerHTML   = html;
+  return e;
+}
+
+function toggleNode(arrow, children) {
+  const open = children.style.display !== 'none';
+  children.style.display = open ? 'none' : '';
+  arrow.textContent = open ? '▶' : '▼';
+}
+
+function makeToggle(arrow, children) {
+  arrow.style.cursor = 'pointer';
+  arrow.addEventListener('click', (e) => { e.stopPropagation(); toggleNode(arrow, children); });
+}
+
+function renderTree(orgs) {
+  const root = document.getElementById('treeContent');
+  root.innerHTML = '';
+
+  if (!orgs || !orgs.length) {
+    root.innerHTML = '<p style="padding:20px;color:var(--text-light)">Aucun domaine indexé. Lancez un scan d\'abord.</p>';
+    return;
+  }
+
+  orgs.forEach(org => {
+    const orgEl = el('div', 'tree-org');
+
+    // Org header
+    const orgHdr = el('div', 'tree-org-hdr');
+    const orgArrow = el('span', 'tree-arrow', '▼');
+    const orgLabel = el('span', 'tree-org-name',
+      `<span class="tree-org-dot" style="background:${org.color}"></span>${org.name}`);
+    const orgCount = el('span', 'tree-count', `${org.domains.length} domaine(s)`);
+    orgHdr.appendChild(orgArrow);
+    orgHdr.appendChild(orgLabel);
+    orgHdr.appendChild(orgCount);
+    orgEl.appendChild(orgHdr);
+
+    const orgChildren = el('div', 'tree-children');
+
+    org.domains.forEach(domain => {
+      const domEl = el('div', 'tree-node tree-domain');
+      const domArrow = el('span', 'tree-arrow', '▼');
+      const domLabel = el('span', 'tree-label',
+        `&#127760; <b>${domain.uid}</b>`
+        + (domain.source ? ` <span class="tree-meta">${domain.source}</span>` : '')
+        + (domain.first_seen ? ` <span class="tree-meta">${domain.first_seen}</span>` : ''));
+      const domChildren = el('div', 'tree-children');
+
+      // Subdomains
+      domain.subdomains.forEach(sub => {
+        const subEl = el('div', 'tree-node tree-subdomain');
+        const subArrow = el('span', 'tree-arrow', sub.ips.length ? '▼' : ' ');
+        const subLabel = el('span', 'tree-label',
+          `&#8618; ${sub.uid}`
+          + (sub.source ? ` <span class="tree-meta">${sub.source}</span>` : ''));
+        const subChildren = el('div', 'tree-children');
+
+        sub.ips.forEach(ip => appendIp(subChildren, ip));
+        if (!sub.ips.length) subChildren.style.display = 'none';
+
+        subEl.appendChild(subArrow);
+        subEl.appendChild(subLabel);
+        subEl.appendChild(subChildren);
+        if (sub.ips.length) makeToggle(subArrow, subChildren);
+        domChildren.appendChild(subEl);
+      });
+
+      // Direct IPs (no subdomain)
+      domain.ips.forEach(ip => appendIp(domChildren, ip));
+
+      if (!domain.subdomains.length && !domain.ips.length) {
+        domChildren.style.display = 'none';
+        domArrow.textContent = '▶';
+      }
+
+      domEl.appendChild(domArrow);
+      domEl.appendChild(domLabel);
+      domEl.appendChild(domChildren);
+      makeToggle(domArrow, domChildren);
+      orgChildren.appendChild(domEl);
+    });
+
+    orgEl.appendChild(orgChildren);
+    makeToggle(orgArrow, orgChildren);
+    root.appendChild(orgEl);
+  });
+}
+
+function appendIp(parent, ip) {
+  const ipEl = el('div', 'tree-node tree-ip');
+  const ipArrow = el('span', 'tree-arrow', ip.ports.length ? '▼' : ' ');
+  const meta = [ip.asn_org, ip.country].filter(Boolean).join(' · ');
+  const ipLabel = el('span', 'tree-label',
+    `&#128187; <b>${ip.uid}</b>`
+    + (meta ? ` <span class="tree-meta">${meta}</span>` : ''));
+  const ipChildren = el('div', 'tree-children');
+
+  ip.ports.forEach(port => {
+    const portEl = el('div', 'tree-node tree-port');
+    portEl.innerHTML =
+      `<span class="tree-arrow"> </span>`
+      + `<span class="tree-label">&#9889; <b>${port.port}/${port.protocol}</b>`
+      + (port.service ? ` <span class="tree-meta">${port.service}</span>` : '')
+      + `</span>`;
+    ipChildren.appendChild(portEl);
+  });
+
+  if (!ip.ports.length) ipChildren.style.display = 'none';
+
+  ipEl.appendChild(ipArrow);
+  ipEl.appendChild(ipLabel);
+  ipEl.appendChild(ipChildren);
+  if (ip.ports.length) makeToggle(ipArrow, ipChildren);
+  parent.appendChild(ipEl);
+}
+
+// ── Expand / collapse all ──────────────────────────────────────────────────
+function treeExpandAll() {
+  document.querySelectorAll('#treeContent .tree-children').forEach(c => c.style.display = '');
+  document.querySelectorAll('#treeContent .tree-arrow').forEach(a => {
+    if (a.textContent.trim() === '▶') a.textContent = '▼';
+  });
+}
+
+function treeCollapseAll() {
+  document.querySelectorAll('#treeContent .tree-children').forEach(c => c.style.display = 'none');
+  document.querySelectorAll('#treeContent .tree-arrow').forEach(a => {
+    if (a.textContent.trim() === '▼') a.textContent = '▶';
+  });
+}
+</script>
 {% endblock %}
+

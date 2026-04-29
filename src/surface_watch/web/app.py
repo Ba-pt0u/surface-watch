@@ -120,20 +120,31 @@ def dashboard():
 
 @_app.route("/assets")
 def assets_view():
-    asset_type = request.args.get("type", "")
-    search = request.args.get("q", "").strip().lower()
+    asset_type    = request.args.get("type", "").strip()
+    search        = request.args.get("q", "").strip().lower()
+    org_filter    = request.args.get("org", "").strip()
+    source_filter = request.args.get("source", "").strip()
+
     if not _graph:
         assets = []
+        all_orgs: list[str] = []
+        all_sources: list[str] = []
     else:
+        all_nodes = list(_graph.g.nodes(data=True))
+        all_orgs    = sorted({a.get("organization", "") for _, a in all_nodes if a.get("organization")})
+        all_sources = sorted({a.get("source", "")       for _, a in all_nodes if a.get("source")})
+
         assets = [
             {"uid": uid, **attrs}
-            for uid, attrs in _graph.g.nodes(data=True)
-            if (not asset_type or attrs.get("asset_type") == asset_type)
-            and (not search or search in uid.lower())
+            for uid, attrs in all_nodes
+            if (not asset_type    or attrs.get("asset_type")  == asset_type)
+            and (not search        or search in uid.lower())
+            and (not org_filter    or attrs.get("organization") == org_filter)
+            and (not source_filter or attrs.get("source")        == source_filter)
         ]
         assets.sort(key=lambda a: (a.get("asset_type", ""), a.get("uid", "")))
 
-    # Count per type for sidebar
+    # Count per type (total, for sidebar badges)
     type_counts: dict = {}
     if _graph:
         for _, attrs in _graph.g.nodes(data=True):
@@ -145,9 +156,110 @@ def assets_view():
         assets=assets,
         asset_type=asset_type,
         search=search,
+        org_filter=org_filter,
+        source_filter=source_filter,
+        all_orgs=all_orgs,
+        all_sources=all_sources,
         type_counts=type_counts,
         now=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
     )
+
+
+@_app.route("/api/assets/tree")
+def api_assets_tree():
+    """Hierarchical tree: org → domain → subdomain → IP → port (JSON)."""
+    if not _graph:
+        return jsonify({"orgs": []})
+
+    org_filter    = request.args.get("org", "").strip()
+    source_filter = request.args.get("source", "").strip()
+    search        = request.args.get("q", "").strip().lower()
+
+    g = _graph.g
+
+    def node_info(uid: str) -> dict:
+        return dict(g.nodes.get(uid, {}))
+
+    # Pre-build adjacency maps by edge type
+    has_subdomain: dict[str, list[str]] = {}
+    resolves_to:   dict[str, list[str]] = {}
+    exposes_port:  dict[str, list[str]] = {}
+    for src, tgt, ea in g.edges(data=True):
+        et = ea.get("edge_type", "")
+        if et == "has_subdomain":
+            has_subdomain.setdefault(src, []).append(tgt)
+        elif et in ("resolves_to", "has_public_ip"):
+            resolves_to.setdefault(src, []).append(tgt)
+        elif et == "exposes_port":
+            exposes_port.setdefault(src, []).append(tgt)
+
+    def build_port(uid: str) -> dict:
+        a = node_info(uid)
+        return {
+            "uid":      uid,
+            "port":     a.get("port", ""),
+            "protocol": a.get("protocol", "tcp"),
+            "service":  a.get("service_name", ""),
+        }
+
+    def build_ip(uid: str) -> dict:
+        a = node_info(uid)
+        ports = sorted(
+            [build_port(p) for p in exposes_port.get(uid, [])],
+            key=lambda p: int(p["port"]) if str(p["port"]).isdigit() else 0,
+        )
+        return {
+            "uid":     uid,
+            "asn_org": a.get("asn_org", ""),
+            "country": a.get("country", ""),
+            "ports":   ports,
+        }
+
+    def build_subdomain(uid: str) -> dict:
+        a = node_info(uid)
+        return {
+            "uid":    uid,
+            "source": a.get("source", ""),
+            "ips":    [build_ip(ip) for ip in resolves_to.get(uid, [])],
+        }
+
+    orgs: dict[str, dict] = {}
+    for uid, attrs in g.nodes(data=True):
+        if attrs.get("asset_type") != "domain":
+            continue
+        if org_filter    and attrs.get("organization") != org_filter:
+            continue
+        if source_filter and attrs.get("source") != source_filter:
+            continue
+        if search and search not in uid.lower():
+            continue
+
+        org_id = attrs.get("organization") or "_none_"
+        if org_id not in orgs:
+            org_conf = next((o for o in config.ORGANIZATIONS if o["id"] == org_id), None)
+            orgs[org_id] = {
+                "id":      org_id,
+                "name":    org_conf["name"]        if org_conf else org_id,
+                "color":   org_conf.get("brand_color", "#888888") if org_conf else "#888888",
+                "domains": [],
+            }
+
+        domain_node = {
+            "uid":        uid,
+            "source":     attrs.get("source", ""),
+            "first_seen": (attrs.get("first_seen") or "")[:10],
+            "subdomains": sorted(
+                [build_subdomain(s) for s in has_subdomain.get(uid, [])],
+                key=lambda s: s["uid"],
+            ),
+            "ips": [build_ip(ip) for ip in resolves_to.get(uid, [])],
+        }
+        orgs[org_id]["domains"].append(domain_node)
+
+    for org in orgs.values():
+        org["domains"].sort(key=lambda d: d["uid"])
+
+    return jsonify({"orgs": list(orgs.values())})
 
 
 @_app.route("/scans")
