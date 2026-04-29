@@ -321,6 +321,79 @@ tbody tr:hover { background: #f8f9fc; }
 .badge-ok      { background: var(--ok-bg);     color: var(--ok); }
 .badge-running { background: var(--info-bg);    color: var(--info); }
 .badge-error   { background: var(--danger-bg);  color: var(--danger); }
+.badge-partial { background: var(--warn-bg);    color: var(--warn); }
+
+/* Pulsing badge for in-progress scans */
+@keyframes badge-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+.badge-pulse { animation: badge-pulse 1.6s ease-in-out infinite; }
+
+/* ── Scans table diff chips ───────────────────────────────── */
+.diff-chips  { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.diff-new     { color: #1a9b72; font-weight: 700; font-size: 12px; }
+.diff-removed { color: var(--danger); font-weight: 700; font-size: 12px; }
+.diff-changed { color: var(--warn); font-weight: 700; font-size: 12px; }
+
+/* ── Error button in scans table ──────────────────────────── */
+.err-btn {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.err-btn:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* ── Error detail modal ───────────────────────────────────── */
+.err-modal-bg {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.55);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.err-modal-bg[hidden] { display: none !important; }
+.err-modal {
+  background: var(--grey-card);
+  border: 1px solid var(--grey-border);
+  border-radius: 12px;
+  width: 640px; max-width: 95vw;
+  max-height: 75vh;
+  display: flex; flex-direction: column;
+  box-shadow: 0 8px 40px rgba(0,0,0,.35);
+}
+.err-modal-hdr {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--grey-border);
+  font-weight: 600;
+}
+.err-modal-hdr button {
+  background: none; border: none;
+  color: var(--text-light); font-size: 16px; cursor: pointer;
+}
+.err-modal-hdr button:hover { color: var(--text); }
+.err-list {
+  list-style: none; margin: 0; padding: 12px 20px;
+  overflow-y: auto; flex: 1;
+}
+.err-item {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  color: var(--danger);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--grey-border);
+  word-break: break-all;
+}
+.err-item:last-child { border-bottom: none; }
 
 /* ── Asset UID cell ───────────────────────────────────────── */
 .asset-uid {

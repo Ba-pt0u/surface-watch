@@ -126,10 +126,15 @@ def run_scan_cycle(graph: AssetGraph, collectors: list[str] | None = None) -> No
     # Finalize run
     summary = {
         "assets": graph.g.number_of_nodes(),
-        "edges": graph.g.number_of_edges(),
-        "diffs": len(diffs),
-        "alerts": alert_count,
-        "errors": len(errors),
+        "edges":  graph.g.number_of_edges(),
+        # Granular diff counts
+        "new":     sum(1 for d in diffs if d.category == "new"),
+        "removed": sum(1 for d in diffs if d.category == "removed"),
+        "changed": sum(1 for d in diffs if d.category == "changed"),
+        "diffs":   len(diffs),   # backward-compat total
+        "alerts":  alert_count,
+        "errors":  len(errors),
+        "error_list": errors[:30],  # store up to 30 messages for display
     }
     status = "ok" if not errors else "partial"
     graph.finish_run(run_id, status=status, summary=summary)

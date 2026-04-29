@@ -106,9 +106,9 @@ IPINFO_TOKEN: str = _optional("IPINFO_TOKEN")
 # ---------------------------------------------------------------------------
 # Azure / Entra ID (optional)
 # ---------------------------------------------------------------------------
-AZURE_TENANT_ID: str = _optional("AZURE_TENANT_ID")
-AZURE_CLIENT_ID: str = _optional("AZURE_CLIENT_ID")
-AZURE_CLIENT_SECRET: str = _optional("AZURE_CLIENT_SECRET")
+AZURE_TENANT_ID: str = _optional("AZURE_TENANT_ID").strip()
+AZURE_CLIENT_ID: str = _optional("AZURE_CLIENT_ID").strip()
+AZURE_CLIENT_SECRET: str = _optional("AZURE_CLIENT_SECRET").strip()
 AZURE_ENABLED: bool = bool(AZURE_TENANT_ID and AZURE_CLIENT_ID and AZURE_CLIENT_SECRET)
 
 # ---------------------------------------------------------------------------

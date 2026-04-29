@@ -3,64 +3,203 @@
 
 {% block content %}
 <div class="page-header">
-    <div>
-        <div class="page-title">Historique des scans</div>
-        <div class="page-subtitle">{{ runs|length }} scan(s) &mdash; {{ now }}</div>
-    </div>
+  <div>
+    <div class="page-title">Historique des scans</div>
+    <div class="page-subtitle" id="scanSubtitle">{{ runs|length }} scan(s) &mdash; {{ now }}</div>
+  </div>
+  <button class="btn-sm" onclick="location.reload()">&#8635; Rafra&icirc;chir</button>
 </div>
 
 <div class="panel">
-    <div class="panel-body">
-        <table>
-            <thead><tr>
-                <th>#</th>
-                <th>Collecteur</th>
-                <th>D&eacute;but</th>
-                <th>Dur&eacute;e</th>
-                <th>Assets</th>
-                <th>Changements</th>
-                <th>Alertes</th>
-                <th>Erreurs</th>
-                <th>Statut</th>
-            </tr></thead>
-            <tbody>
-            {% for run in runs %}
-            {% set s = run.summary %}
-            <tr>
-                <td class="ts"><a href="/scans/{{ run.run_id }}">#{{ run.run_id }}</a></td>
-                <td><span class="event-chip">{{ run.collector or 'all' }}</span></td>
-                <td class="ts">{{ run.started_at[:16].replace('T', ' ') }}</td>
-                <td class="ts">
-                    {% if run.finished_at %}
-                        {% set dur = ((run.finished_at[:19] | replace('T',' ')) ) %}
-                        {{ run.finished_at[:16].replace('T',' ') }}
-                    {% else %}
-                        <span style="color:var(--info)">en cours…</span>
-                    {% endif %}
-                </td>
-                <td class="ts">{{ s.get('assets', '—') }}</td>
-                <td class="ts">
-                    {% if s.get('diffs') %}
-                    <span style="color:var(--turquoise); font-weight:600">+{{ s.diffs }}</span>
-                    {% else %}—{% endif %}
-                </td>
-                <td class="ts">
-                    {% if s.get('alerts') %}
-                    <span style="color:var(--warn); font-weight:600">{{ s.alerts }}</span>
-                    {% else %}0{% endif %}
-                </td>
-                <td class="ts">
-                    {% if s.get('errors') %}
-                    <span style="color:var(--danger)">{{ s.errors }}</span>
-                    {% else %}0{% endif %}
-                </td>
-                <td><span class="badge badge-{{ run.status }}">{{ run.status }}</span></td>
-            </tr>
+  <div class="panel-body" style="padding:0">
+    <table class="scans-table">
+      <thead><tr>
+        <th>#</th>
+        <th>Collecteur</th>
+        <th>D&eacute;but</th>
+        <th>Dur&eacute;e</th>
+        <th>Assets</th>
+        <th title="Changements vs dernier scan du m&ecirc;me collecteur">&#916; Assets</th>
+        <th>Changements</th>
+        <th>Alertes</th>
+        <th>Erreurs</th>
+        <th>Statut</th>
+      </tr></thead>
+      <tbody id="scansBody">
+      {% for run in runs %}
+      {% set s = run.summary %}
+      <tr class="scan-row{% if not run.finished_at %} scan-running{% endif %}"
+          data-runid="{{ run.run_id }}"
+          data-started="{{ run.started_at }}"
+          data-finished="{{ run.finished_at or '' }}">
+
+        <td class="ts"><a href="/scans/{{ run.run_id }}">#{{ run.run_id }}</a></td>
+
+        <td><span class="event-chip">{{ run.collector or 'all' }}</span></td>
+
+        <td class="ts">{{ run.started_at[:16].replace('T', ' ') }}</td>
+
+        {# Durée #}
+        <td class="ts scan-dur" data-ds="{{ run.duration_s if run.duration_s is not none else '' }}">
+          {% if run.duration_s is not none %}
+            {{ '%dm %02ds' % (run.duration_s // 60, run.duration_s % 60) if run.duration_s >= 60
+               else '%ds' % run.duration_s }}
+          {% elif not run.finished_at %}
+            <span class="scan-live-dur" style="color:var(--info)">—</span>
+          {% else %}—{% endif %}
+        </td>
+
+        {# Assets total #}
+        <td class="ts">{{ s.get('assets', '—') }}</td>
+
+        {# Delta assets vs dernier scan même collecteur #}
+        <td class="ts">
+          {% if run.assets_delta is not none %}
+            {% if run.assets_delta > 0 %}
+              <span class="diff-new">+{{ run.assets_delta }}</span>
+            {% elif run.assets_delta < 0 %}
+              <span class="diff-removed">{{ run.assets_delta }}</span>
             {% else %}
-            <tr class="empty-row"><td colspan="9">Aucun scan enregistr&eacute;</td></tr>
-            {% endfor %}
-            </tbody>
-        </table>
-    </div>
+              <span style="color:var(--text-light)">0</span>
+            {% endif %}
+          {% else %}
+            <span style="color:var(--text-light)" title="Premier scan de ce collecteur">—</span>
+          {% endif %}
+        </td>
+
+        {# Changements détaillés (new/removed/changed) #}
+        <td class="ts">
+          {% set new = s.get('new', 0) %}
+          {% set removed = s.get('removed', 0) %}
+          {% set changed = s.get('changed', 0) %}
+          {% if new or removed or changed %}
+            <span class="diff-chips">
+              {% if new %}<span class="diff-new">+{{ new }}</span>{% endif %}
+              {% if removed %}<span class="diff-removed">&#8722;{{ removed }}</span>{% endif %}
+              {% if changed %}<span class="diff-changed">~{{ changed }}</span>{% endif %}
+            </span>
+          {% elif s.get('diffs') %}
+            {# Ancien format — pas de ventilation #}
+            <span class="diff-new">+{{ s.diffs }}</span>
+          {% else %}
+            <span style="color:var(--text-light)">0</span>
+          {% endif %}
+        </td>
+
+        {# Alertes #}
+        <td class="ts">
+          {% if s.get('alerts') %}
+            <span style="color:var(--warn);font-weight:600">{{ s.alerts }}</span>
+          {% else %}
+            <span style="color:var(--text-light)">0</span>
+          {% endif %}
+        </td>
+
+        {# Erreurs cliquables #}
+        <td class="ts">
+          {% if s.get('errors') %}
+            <button class="err-btn" onclick="showErrors(this)"
+                    data-errors="{{ s.get('error_list', []) | tojson | e }}">
+              &#9888; {{ s.errors }}
+            </button>
+          {% else %}
+            <span style="color:var(--text-light)">0</span>
+          {% endif %}
+        </td>
+
+        <td>
+          <span class="badge badge-{{ run.status }}{% if not run.finished_at %} badge-pulse{% endif %}">
+            {{ run.status }}
+          </span>
+        </td>
+      </tr>
+      {% else %}
+      <tr class="empty-row"><td colspan="10">Aucun scan enregistr&eacute;</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
+
+<!-- Modal erreurs -->
+<div id="errModal" class="err-modal-bg" onclick="closeErrors(event)" hidden>
+  <div class="err-modal">
+    <div class="err-modal-hdr">
+      <span>D&eacute;tail des erreurs</span>
+      <button onclick="document.getElementById('errModal').hidden=true">&#10005;</button>
+    </div>
+    <ul id="errList" class="err-list"></ul>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ── Format seconds → "Xm Ys" or "Ys"
+function fmtDur(s) {
+  s = Math.round(s);
+  if (s < 60) return s + 's';
+  return Math.floor(s / 60) + 'm ' + String(s % 60).padStart(2, '0') + 's';
+}
+
+// ── Live duration for running scans
+function updateLiveDurations() {
+  const now = Date.now();
+  document.querySelectorAll('.scan-running').forEach(row => {
+    const started = row.dataset.started;
+    if (!started) return;
+    const st = new Date(started).getTime();
+    const elapsed = Math.floor((now - st) / 1000);
+    const cell = row.querySelector('.scan-live-dur');
+    if (cell) cell.textContent = fmtDur(elapsed);
+  });
+}
+
+// ── Poll /api/scan/status every 8s — reload page when a running scan finishes
+let _lastRunning = {{ 'true' if runs and not runs[0].finished_at else 'false' }};
+
+async function pollStatus() {
+  try {
+    const r = await fetch('/api/scan/status');
+    const d = await r.json();
+    if (_lastRunning && !d.running) {
+      // Scan just finished — reload to show updated row
+      location.reload();
+      return;
+    }
+    _lastRunning = d.running;
+  } catch { /* ignore fetch errors */ }
+}
+
+// Only poll if there are running scans
+if (_lastRunning) {
+  setInterval(updateLiveDurations, 1000);
+  setInterval(pollStatus, 8000);
+  updateLiveDurations();
+}
+
+// ── Error modal
+function showErrors(btn) {
+  let msgs;
+  try { msgs = JSON.parse(btn.dataset.errors); } catch { msgs = []; }
+  const list = document.getElementById('errList');
+  list.innerHTML = '';
+  if (!msgs.length) {
+    list.innerHTML = '<li style="color:var(--text-light)">Aucun d\u00e9tail disponible.</li>';
+  } else {
+    msgs.forEach(m => {
+      const li = document.createElement('li');
+      li.className = 'err-item';
+      li.textContent = m;
+      list.appendChild(li);
+    });
+  }
+  document.getElementById('errModal').hidden = false;
+}
+
+function closeErrors(e) {
+  if (e.target === e.currentTarget) document.getElementById('errModal').hidden = true;
+}
+</script>
 {% endblock %}
+

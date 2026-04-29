@@ -302,16 +302,43 @@ class AssetGraph:
         self._db.commit()
 
     def get_last_runs(self, limit: int = 20) -> list[dict]:
-        """Return recent scan runs."""
+        """Return recent scan runs, enriched with duration and per-collector asset delta."""
         cur = self._db.execute(
             "SELECT run_id, started_at, finished_at, collector, status, summary FROM scan_runs ORDER BY run_id DESC LIMIT ?",
             (limit,),
         )
-        return [
+        rows = [
             {"run_id": r[0], "started_at": r[1], "finished_at": r[2],
              "collector": r[3], "status": r[4], "summary": json.loads(r[5] or "{}")}
             for r in cur
         ]
+        for run in rows:
+            # Compute duration in seconds
+            if run["finished_at"] and run["started_at"]:
+                try:
+                    st = datetime.fromisoformat(run["started_at"])
+                    fn = datetime.fromisoformat(run["finished_at"])
+                    run["duration_s"] = max(0, int((fn - st).total_seconds()))
+                except Exception:
+                    run["duration_s"] = None
+            else:
+                run["duration_s"] = None
+
+            # Compute asset delta vs previous run of the same collector
+            prev = self._db.execute(
+                "SELECT summary FROM scan_runs "
+                "WHERE collector = ? AND run_id < ? AND finished_at IS NOT NULL "
+                "ORDER BY run_id DESC LIMIT 1",
+                (run["collector"], run["run_id"]),
+            ).fetchone()
+            if prev:
+                prev_s = json.loads(prev[0] or "{}")
+                curr_assets = run["summary"].get("assets") or 0
+                prev_assets = prev_s.get("assets") or 0
+                run["assets_delta"] = curr_assets - prev_assets
+            else:
+                run["assets_delta"] = None   # first run of this collector
+        return rows
 
     # ------------------------------------------------------------------
     # Stats
